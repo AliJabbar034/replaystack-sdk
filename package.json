@@ -1,0 +1,97 @@
+{
+  "name": "@replaystack/sdk",
+  "version": "1.0.0",
+  "description": "Official ReplayStack SDK for Node.js 18+: capture HTTP requests, responses, exceptions, stack frames, and breadcrumbs; ship them to ReplayStack for debugging, replay, and dashboards. First-class Express, Next.js, and NestJS integrations.",
+  "keywords": [
+    "replaystack",
+    "tracereplay",
+    "observability",
+    "debugging",
+    "error-tracking",
+    "exceptions",
+    "stack-trace",
+    "api-monitoring",
+    "event-replay",
+    "replay",
+    "backend",
+    "nodejs",
+    "sdk",
+    "typescript",
+    "express",
+    "nextjs",
+    "nestjs"
+  ],
+  "author": "ReplayStack",
+  "license": "MIT",
+  "homepage": "https://replaystack.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AliJabbar034/replaystack-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AliJabbar034/replaystack-sdk/issues"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "express": ">=4.0.0",
+    "@nestjs/common": ">=9.0.0",
+    "rxjs": ">=7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    },
+    "@nestjs/common": {
+      "optional": true
+    },
+    "rxjs": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.30",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.4.5",
+    "@nestjs/common": "^10.3.8",
+    "rxjs": "^7.8.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./express": {
+      "types": "./dist/express.d.ts",
+      "default": "./dist/express.js"
+    },
+    "./nextjs": {
+      "types": "./dist/nextjs.d.ts",
+      "default": "./dist/nextjs.js"
+    },
+    "./nestjs": {
+      "types": "./dist/nestjs.d.ts",
+      "default": "./dist/nestjs.js"
+    }
+  }
+}
