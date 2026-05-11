@@ -1,6 +1,6 @@
 {
   "name": "@replaystack/sdk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Official ReplayStack SDK for Node.js 18+: capture HTTP requests, responses, exceptions, stack frames, and breadcrumbs; ship them to ReplayStack for debugging, replay, and dashboards. First-class Express, Next.js, and NestJS integrations.",
   "keywords": [
     "replaystack",
