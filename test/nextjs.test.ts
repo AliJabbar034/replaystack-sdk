@@ -46,6 +46,7 @@ describe('withReplayStackNext', () => {
     const payload = captureSpy.mock.calls[0][0];
     expect(payload.method).toBe('POST');
     expect(payload.endpoint).toBe('/app/api/orders');
+    expect(payload.requestUrl).toBe('http://localhost/app/api/orders');
     expect(payload.status).toBe('success');
 
     captureSpy.mockRestore();
@@ -122,8 +123,9 @@ describe('withReplayStackNextApi', () => {
     const req = {
       method: 'GET',
       url: '/api/pages-test',
-      headers: {},
+      headers: { host: 'localhost:3000' },
       body: {},
+      protocol: 'http',
       socket: { remoteAddress: '127.0.0.1' },
     };
     const res = {
@@ -139,6 +141,7 @@ describe('withReplayStackNextApi', () => {
 
     expect(captureSpy).toHaveBeenCalled();
     expect(captureSpy.mock.calls[0][0].endpoint).toBe('/api/pages-test');
+    expect(captureSpy.mock.calls[0][0].requestUrl).toBe('http://localhost:3000/api/pages-test');
     expect(captureSpy.mock.calls[0][0].responsePayload).toEqual({ page: true });
 
     captureSpy.mockRestore();
@@ -159,8 +162,9 @@ describe('withReplayStackNextApi', () => {
     const req = {
       method: 'POST',
       url: '/api/e',
-      headers: {},
+      headers: { host: '127.0.0.1:3000' },
       body: {},
+      protocol: 'http',
       socket: {},
     };
     const res = {

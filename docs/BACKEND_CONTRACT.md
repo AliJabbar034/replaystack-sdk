@@ -46,6 +46,7 @@ The SDK authenticates with a project API key (header `x-tracereplay-api-key`; `x
   "eventType": "api",
   "method": "POST",
   "endpoint": "/api/orders",
+  "requestUrl": "https://orders.example.com/api/orders?page=1",
   "requestHeaders": {},
   "requestPayload": {},
   "responseHeaders": {},

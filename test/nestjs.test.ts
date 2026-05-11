@@ -57,9 +57,11 @@ describe('createReplayStackNestInterceptor', () => {
       method: 'GET',
       originalUrl: '/users',
       url: '/users',
+      protocol: 'https',
       headers: { 'x-trace-id': 'tid-nest' },
       body: undefined,
       ip: '127.0.0.1',
+      get: vi.fn((name: string) => (name === 'host' ? 'nest.test' : undefined)),
     };
     const res = { statusCode: 200, getHeaders: vi.fn(() => ({ 'x-powered-by': 'nest' })) };
 
@@ -72,6 +74,7 @@ describe('createReplayStackNestInterceptor', () => {
     const payload = captureEvent.mock.calls[0][0];
     expect(payload.traceId).toBe('tid-nest');
     expect(payload.endpoint).toBe('/users');
+    expect(payload.requestUrl).toBe('https://nest.test/users');
     expect(payload.status).toBe('success');
     expect(payload.responsePayload).toEqual({ data: 1 });
   });

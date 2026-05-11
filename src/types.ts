@@ -23,6 +23,8 @@ export interface ReplayStackExceptionContext {
   eventType?: ReplayStackEventType;
   method?: string;
   endpoint?: string;
+  /** Absolute URL (scheme, host, path, query) for replay and dashboards. */
+  requestUrl?: string;
   requestHeaders?: Record<string, unknown>;
   requestPayload?: unknown;
   responseHeaders?: Record<string, unknown>;
@@ -99,6 +101,15 @@ export interface ReplayStackEventInput {
   eventType: ReplayStackEventType;
   method?: string;
   endpoint?: string;
+  /** Absolute URL (scheme, host, path, query). Populated by framework integrations when available. */
+  requestUrl?: string;
+  /**
+   * Detected auth signal at capture time (e.g. `'bearer'` when the original request had `Authorization: Bearer …`).
+   * Computed automatically by the SDK from request headers BEFORE masking; no raw token is ever sent.
+   */
+  authMode?: 'bearer' | 'basic' | 'api_key' | 'cookie' | 'other' | 'none';
+  /** Original `Authorization` scheme string (e.g. `Bearer`, `Hawk`) when detected. */
+  authScheme?: string;
   requestHeaders?: Record<string, unknown>;
   requestPayload?: unknown;
   responseHeaders?: Record<string, unknown>;

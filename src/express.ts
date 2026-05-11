@@ -2,7 +2,14 @@ import type { NextFunction, Request, Response } from 'express';
 import { ReplayStack } from './client';
 import { runWithReplayStackContext } from './context';
 import { ExpressMiddlewareOptions } from './types';
-import { createTraceId, getErrorDetails, headersToObject, normalizeEndpoint, shouldIgnorePath } from './utils';
+import {
+  createTraceId,
+  getErrorDetails,
+  headersToObject,
+  normalizeEndpoint,
+  shouldIgnorePath,
+  buildAbsoluteRequestUrlFromParts,
+} from './utils';
 
 const DEFAULT_IGNORED_PATHS = ['/health', '/metrics', '/favicon.ico'];
 
@@ -16,6 +23,11 @@ export function replayStackExpressMiddleware(client: ReplayStack, options: Expre
     return runWithReplayStackContext(() => {
       const startedAt = Date.now();
       const path = normalizeEndpoint(req.originalUrl || req.url);
+      const requestUrl = buildAbsoluteRequestUrlFromParts({
+        pathWithQuery: req.originalUrl || req.url || '',
+        getHeader: (name) => req.get(name),
+        protocolFallback: req.protocol,
+      });
 
       if (shouldIgnorePath(path, ignoredPaths)) {
         return next();
@@ -77,6 +89,7 @@ export function replayStackExpressMiddleware(client: ReplayStack, options: Expre
           eventType: 'api',
           method: req.method,
           endpoint: path || req.path,
+          requestUrl,
           requestHeaders: captureHeaders ? headersToObject(req.headers) : undefined,
           requestPayload: captureRequestBody ? req.body : undefined,
           responseHeaders: captureHeaders ? headersToObject(res.getHeaders()) : undefined,
@@ -124,6 +137,11 @@ export function replayStackExpressErrorMiddleware(client: ReplayStack) {
       eventType: 'api',
       method: req.method,
       endpoint: normalizeEndpoint(req.originalUrl || req.url) || req.path,
+      requestUrl: buildAbsoluteRequestUrlFromParts({
+        pathWithQuery: req.originalUrl || req.url || '',
+        getHeader: (name) => req.get(name),
+        protocolFallback: req.protocol,
+      }),
       requestHeaders: headersToObject(req.headers),
       requestPayload: req.body,
       responseHeaders: headersToObject(res.getHeaders()),

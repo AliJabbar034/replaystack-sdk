@@ -1,7 +1,14 @@
 import { ReplayStack } from './client';
 import { runWithReplayStackContext } from './context';
 import { ReplayStackEventStatus } from './types';
-import { createTraceId, getErrorDetails, headersToObject, normalizeEndpoint } from './utils';
+import {
+  createTraceId,
+  getErrorDetails,
+  headersToObject,
+  normalizeEndpoint,
+  normalizeAbsoluteRequestUrl,
+  buildAbsoluteRequestUrlFromParts,
+} from './utils';
 
 export interface NextRouteHandlerOptions {
   client: ReplayStack;
@@ -40,6 +47,7 @@ export function withReplayStackNext<TRequest extends Request = Request>(
       const startedAt = Date.now();
       const method = request.method;
       const endpoint = normalizeEndpoint(options.endpoint || request.url);
+      const requestUrl = normalizeAbsoluteRequestUrl(request.url) || normalizeAbsoluteRequestUrl(options.endpoint);
       const traceId = options.getTraceId?.(request) || request.headers.get('x-trace-id') || createTraceId();
 
       let requestPayload: unknown;
@@ -81,6 +89,7 @@ export function withReplayStackNext<TRequest extends Request = Request>(
             eventType: 'api',
             method,
             endpoint,
+            requestUrl: requestUrl ?? undefined,
             requestHeaders: captureHeaders ? headersToObject(request.headers) : undefined,
             requestPayload,
             responseHeaders: captureHeaders ? headersToObject(response.headers) : undefined,
@@ -118,6 +127,7 @@ export function withReplayStackNext<TRequest extends Request = Request>(
           eventType: 'api',
           method,
           endpoint,
+          requestUrl: requestUrl ?? undefined,
           requestHeaders: captureHeaders ? headersToObject(request.headers) : undefined,
           requestPayload,
           responsePayload: { message: details.errorMessage || 'Internal Server Error' },
@@ -166,6 +176,11 @@ export function withReplayStackNextApi<TReq extends any = any, TRes extends any 
       const anyReq = req as any;
       const anyRes = res as any;
       const endpoint = normalizeEndpoint(anyReq.url);
+      const requestUrl = buildAbsoluteRequestUrlFromParts({
+        pathWithQuery: anyReq.url || '',
+        getHeader: nextPagesHeaderGetter(anyReq),
+        protocolFallback: anyReq.protocol,
+      });
       const traceId = options.getTraceId?.(anyReq) || anyReq.headers?.['x-trace-id'] || createTraceId();
 
       let responsePayload: unknown;
@@ -203,6 +218,7 @@ export function withReplayStackNextApi<TReq extends any = any, TRes extends any 
           eventType: 'api',
           method: anyReq.method,
           endpoint,
+          requestUrl,
           requestHeaders: captureHeaders ? headersToObject(anyReq.headers) : undefined,
           requestPayload: captureRequestBody ? anyReq.body : undefined,
           responseHeaders: captureHeaders ? headersToObject(anyRes.getHeaders?.()) : undefined,
@@ -230,6 +246,7 @@ export function withReplayStackNextApi<TReq extends any = any, TRes extends any 
           eventType: 'api',
           method: anyReq.method,
           endpoint,
+          requestUrl,
           requestHeaders: captureHeaders ? headersToObject(anyReq.headers) : undefined,
           requestPayload: captureRequestBody ? anyReq.body : undefined,
           responsePayload: { message: details.errorMessage || 'Internal Server Error' },
@@ -248,6 +265,24 @@ export function withReplayStackNextApi<TReq extends any = any, TRes extends any 
         throw error;
       }
     });
+  };
+}
+
+function nextPagesHeaderGetter(req: {
+  get?: (n: string) => unknown;
+  headers?: Record<string, unknown>;
+}): ((name: string) => string | string[] | undefined | null) | undefined {
+  if (typeof req.get === 'function') {
+    return (name) => req.get?.(name) as string | string[] | undefined | null;
+  }
+  const headers = req.headers;
+  if (!headers || typeof headers !== 'object') return undefined;
+  return (name: string) => {
+    const k = Object.keys(headers).find((h) => h.toLowerCase() === name.toLowerCase());
+    if (!k) return undefined;
+    const v = headers[k];
+    if (Array.isArray(v)) return v[0];
+    return v != null ? String(v) : undefined;
   };
 }
 

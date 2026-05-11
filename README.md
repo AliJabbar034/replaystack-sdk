@@ -395,6 +395,7 @@ The backend should accept this shape:
   "eventType": "api",
   "method": "POST",
   "endpoint": "/api/orders",
+  "requestUrl": "https://orders.example.com/api/orders?page=1",
   "requestHeaders": {},
   "requestPayload": {},
   "responseHeaders": {},

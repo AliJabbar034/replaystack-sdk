@@ -1,14 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildAbsoluteRequestUrlFromParts,
   createTraceId,
+  detectAuthMode,
   getErrorDetails,
   headersToObject,
   maskSensitiveData,
+  normalizeAbsoluteRequestUrl,
   normalizeEndpoint,
   safeJsonClone,
   shouldIgnorePath,
   shouldSample,
   truncatePayload,
+  truncateUtf8String,
 } from '../src/utils';
 
 describe('createTraceId', () => {
@@ -29,6 +33,83 @@ describe('normalizeEndpoint', () => {
 
   it('fallback splits query for invalid URL strings', () => {
     expect(normalizeEndpoint('/path?foo=bar')).toBe('/path');
+  });
+});
+
+describe('normalizeAbsoluteRequestUrl', () => {
+  it('returns href for absolute URLs', () => {
+    expect(normalizeAbsoluteRequestUrl('http://a.test/foo?bar=1')).toBe('http://a.test/foo?bar=1');
+  });
+
+  it('returns undefined for path-only strings', () => {
+    expect(normalizeAbsoluteRequestUrl('/api/x')).toBeUndefined();
+  });
+});
+
+describe('buildAbsoluteRequestUrlFromParts', () => {
+  it('joins host, path, and query with forwarded proto', () => {
+    const u = buildAbsoluteRequestUrlFromParts({
+      pathWithQuery: '/v1/items?q=a',
+      getHeader: (n) => (n === 'x-forwarded-proto' ? 'https' : n === 'host' ? 'api.example.com' : undefined),
+    });
+    expect(u).toBe('https://api.example.com/v1/items?q=a');
+  });
+
+  it('returns normalized href when path is already absolute', () => {
+    expect(
+      buildAbsoluteRequestUrlFromParts({
+        pathWithQuery: 'https://z.test/a?b=c',
+      }),
+    ).toBe('https://z.test/a?b=c');
+  });
+});
+
+describe('truncateUtf8String', () => {
+  it('shortens UTF-8 strings and appends an ellipsis marker', () => {
+    const heavy = 'é'.repeat(20);
+    const out = truncateUtf8String(heavy, 10);
+    expect(out.length).toBeLessThan(heavy.length);
+    expect(out.endsWith('…')).toBe(true);
+  });
+});
+
+describe('detectAuthMode', () => {
+  it('reports none for missing or empty headers', () => {
+    expect(detectAuthMode(undefined).mode).toBe('none');
+    expect(detectAuthMode({}).mode).toBe('none');
+  });
+
+  it('recognizes Bearer tokens and preserves the scheme', () => {
+    const got = detectAuthMode({ Authorization: 'Bearer abc.def.ghi' });
+    expect(got.mode).toBe('bearer');
+    expect(got.scheme).toBe('Bearer');
+  });
+
+  it('recognizes Basic auth case-insensitively', () => {
+    expect(detectAuthMode({ authorization: 'basic dXNlcjpwYXNz' }).mode).toBe('basic');
+  });
+
+  it('treats Token / ApiKey / Api-Key Authorization schemes as api_key', () => {
+    expect(detectAuthMode({ Authorization: 'Token xyz' }).mode).toBe('api_key');
+    expect(detectAuthMode({ Authorization: 'ApiKey xyz' }).mode).toBe('api_key');
+  });
+
+  it('falls back to other for unknown Authorization schemes', () => {
+    expect(detectAuthMode({ Authorization: 'Hawk credentials=...' }).mode).toBe('other');
+  });
+
+  it('detects custom API-key headers when Authorization is absent', () => {
+    expect(detectAuthMode({ 'x-api-key': 'k_live_x' }).mode).toBe('api_key');
+    expect(detectAuthMode({ 'X-Auth-Token': 'k' }).mode).toBe('api_key');
+  });
+
+  it('detects session cookies', () => {
+    expect(detectAuthMode({ Cookie: 'connect.sid=abc; theme=dark' }).mode).toBe('cookie');
+  });
+
+  it('works with a Web Headers object', () => {
+    const h = new Headers({ Authorization: 'Bearer t' });
+    expect(detectAuthMode(h).mode).toBe('bearer');
   });
 });
 

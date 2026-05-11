@@ -89,6 +89,45 @@ describe('ReplayStack', () => {
     expect(fetchImpl).toHaveBeenCalledWith('https://api.replaystack.co/api/v1/ingest/events', expect.anything());
   });
 
+  it('annotates outgoing events with detected auth mode based on request headers', async () => {
+    const fetchImpl = mockOkFetch();
+    const client = new ReplayStack({ apiKey: 'k', fetchImpl, retries: 0 });
+
+    await client.captureEvent({
+      eventType: 'api',
+      method: 'GET',
+      endpoint: '/me',
+      requestHeaders: { Authorization: 'Bearer ey.j.w.t' },
+      status: 'failed',
+      statusCode: 500,
+    });
+
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    const payload = JSON.parse(init.body as string);
+    expect(payload.authMode).toBe('bearer');
+    expect(payload.authScheme).toBe('Bearer');
+    // The Authorization value itself remains masked end-to-end.
+    expect(payload.requestHeaders.Authorization).toBe('[MASKED]');
+  });
+
+  it('marks an event as `none` when no auth headers are present', async () => {
+    const fetchImpl = mockOkFetch();
+    const client = new ReplayStack({ apiKey: 'k', fetchImpl, retries: 0 });
+
+    await client.captureEvent({
+      eventType: 'api',
+      method: 'GET',
+      endpoint: '/status',
+      requestHeaders: { 'content-type': 'application/json' },
+      status: 'success',
+      statusCode: 200,
+    });
+
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    const payload = JSON.parse(init.body as string);
+    expect(payload.authMode).toBe('none');
+  });
+
   it('returns null when disabled', async () => {
     const fetchImpl = mockOkFetch();
     const client = new ReplayStack({

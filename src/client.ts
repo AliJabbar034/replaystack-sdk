@@ -9,6 +9,7 @@ import {
 import { addContextBreadcrumb, clearContextBreadcrumbs, getContextBreadcrumbs } from './context';
 import {
   createTraceId,
+  detectAuthMode,
   getErrorDetails,
   maskSensitiveData,
   normalizeEndpoint,
@@ -17,6 +18,7 @@ import {
   shouldSample,
   sleep,
   truncatePayload,
+  truncateUtf8String,
 } from './utils';
 
 const DEFAULT_ENDPOINT = 'https://api.replaystack.co';
@@ -108,6 +110,7 @@ export class ReplayStack implements ReplayStackClientInterface {
       eventType: context.eventType || 'custom',
       method: context.method,
       endpoint: context.endpoint,
+      requestUrl: context.requestUrl,
       requestHeaders: context.requestHeaders,
       requestPayload: context.requestPayload,
       responseHeaders: context.responseHeaders,
@@ -178,10 +181,21 @@ export class ReplayStack implements ReplayStackClientInterface {
       breadcrumbs: cloned.breadcrumbs || this.getBreadcrumbs(),
     };
 
+    if (enriched.authMode == null) {
+      const detected = detectAuthMode(enriched.requestHeaders);
+      enriched.authMode = detected.mode;
+      if (detected.scheme && enriched.authScheme == null) {
+        enriched.authScheme = detected.scheme;
+      }
+    }
+
     const masked = maskSensitiveData(enriched, this.config.maskFields);
+    const maxUrlBytes = Math.min(8192, this.config.maxPayloadSizeBytes);
 
     return {
       ...masked,
+      requestUrl:
+        typeof masked.requestUrl === 'string' ? truncateUtf8String(masked.requestUrl, maxUrlBytes) : masked.requestUrl,
       requestPayload: truncatePayload(masked.requestPayload, this.config.maxPayloadSizeBytes),
       responsePayload: truncatePayload(masked.responsePayload, this.config.maxPayloadSizeBytes),
       requestHeaders: truncatePayload(masked.requestHeaders, this.config.maxPayloadSizeBytes) as Record<
@@ -229,7 +243,7 @@ export class ReplayStack implements ReplayStackClientInterface {
           'x-tracereplay-api-key': this.config.apiKey,
           'x-replaystack-api-key': this.config.apiKey,
           'x-replaystack-sdk': '@replaystack/sdk',
-          'x-replaystack-sdk-version': '1.1.0',
+          'x-replaystack-sdk-version': '1.0.2',
         },
         body: JSON.stringify(payload),
         signal: controller.signal,

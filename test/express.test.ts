@@ -42,9 +42,14 @@ function mockRequest(overrides: Partial<ExpressRequest> = {}): ExpressRequest {
     originalUrl: '/path',
     path: '/path',
     url: '/path',
+    protocol: 'https',
     headers: {},
     ip: '::1',
     body: {},
+    get(name: string) {
+      if (name === 'host') return 'api.example.com';
+      return undefined;
+    },
     ...overrides,
   } as ExpressRequest;
 }
@@ -95,6 +100,7 @@ describe('replayStackExpressMiddleware', () => {
     const payload = JSON.parse(init.body as string);
     expect(payload.method).toBe('GET');
     expect(payload.endpoint).toBe('/orders');
+    expect(payload.requestUrl).toBe('https://api.example.com/orders');
   });
 
   it('respects shouldCapture returning false', async () => {

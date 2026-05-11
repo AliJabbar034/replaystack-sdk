@@ -10,7 +10,7 @@ import {
 import { Observable, catchError, tap, throwError } from 'rxjs';
 import { ReplayStack } from './client';
 import { runWithReplayStackContext } from './context';
-import { getErrorDetails, headersToObject, normalizeEndpoint } from './utils';
+import { getErrorDetails, headersToObject, normalizeEndpoint, buildAbsoluteRequestUrlFromParts } from './utils';
 
 export interface ReplayStackNestOptions {
   client: ReplayStack;
@@ -40,6 +40,11 @@ export function createReplayStackNestInterceptor(options: ReplayStackNestOptions
       const res = http.getResponse();
       const startedAt = Date.now();
       const endpoint = normalizeEndpoint(req.originalUrl || req.url);
+      const requestUrl = buildAbsoluteRequestUrlFromParts({
+        pathWithQuery: req.originalUrl || req.url || '',
+        getHeader: typeof req.get === 'function' ? (name: string) => req.get(name) : undefined,
+        protocolFallback: req.protocol,
+      });
       const traceId = options.getTraceId?.(req) || req.headers?.['x-trace-id'];
 
       options.client.addBreadcrumb('NestJS request started', {
@@ -75,6 +80,7 @@ export function createReplayStackNestInterceptor(options: ReplayStackNestOptions
             eventType: 'api',
             method: req.method,
             endpoint,
+            requestUrl,
             requestHeaders: captureHeaders ? headersToObject(req.headers) : undefined,
             requestPayload: captureRequestBody ? req.body : undefined,
             responseHeaders: captureHeaders ? headersToObject(res.getHeaders?.()) : undefined,
@@ -114,6 +120,11 @@ export function createReplayStackNestExceptionFilter(options: ReplayStackNestOpt
         const details = getErrorDetails(exception);
         const statusCode = getExceptionStatus(exception);
         const endpoint = normalizeEndpoint(req.originalUrl || req.url);
+        const requestUrl = buildAbsoluteRequestUrlFromParts({
+          pathWithQuery: req.originalUrl || req.url || '',
+          getHeader: typeof req.get === 'function' ? (name: string) => req.get(name) : undefined,
+          protocolFallback: req.protocol,
+        });
         const traceId = options.getTraceId?.(req) || req.headers?.['x-trace-id'];
 
         options.client.addBreadcrumb('NestJS exception captured', {
@@ -127,6 +138,7 @@ export function createReplayStackNestExceptionFilter(options: ReplayStackNestOpt
           eventType: 'api',
           method: req.method,
           endpoint,
+          requestUrl,
           requestHeaders: captureHeaders ? headersToObject(req.headers) : undefined,
           requestPayload: captureRequestBody ? req.body : undefined,
           responseHeaders: captureHeaders ? headersToObject(res.getHeaders?.()) : undefined,
