@@ -2,6 +2,8 @@
 
 ReplayStack supports both Next.js App Router and Pages Router.
 
+`REPLAYSTACK_ENDPOINT` and the client `endpoint` option are optional; when missing, ingest uses **`https://api.replaystack.co`**.
+
 ## App Router
 
 Use `withReplayStackNext` in `app/api/*/route.ts` files.
@@ -13,7 +15,7 @@ import { withReplayStackNext } from '@replaystack/sdk/nextjs';
 
 const replayStack = new ReplayStackClient({
   apiKey: process.env.REPLAYSTACK_API_KEY!,
-  endpoint: process.env.REPLAYSTACK_ENDPOINT!,
+  endpoint: process.env.REPLAYSTACK_ENDPOINT,
   serviceName: 'nextjs-api',
   environment: process.env.NODE_ENV || 'development',
   appVersion: process.env.APP_VERSION,
@@ -40,7 +42,7 @@ import { withReplayStackNextApi } from '@replaystack/sdk/nextjs';
 
 const replayStack = new ReplayStackClient({
   apiKey: process.env.REPLAYSTACK_API_KEY!,
-  endpoint: process.env.REPLAYSTACK_ENDPOINT!,
+  endpoint: process.env.REPLAYSTACK_ENDPOINT,
   serviceName: 'nextjs-pages-api',
 });
 

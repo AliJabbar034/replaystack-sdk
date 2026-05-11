@@ -13,9 +13,7 @@ export function parseStackTrace(stack?: string): ReplayStackStackFrame[] {
 
   const lines = stack.split('\n').slice(1);
 
-  return lines
-    .map((line) => parseStackLine(line))
-    .filter((frame): frame is ReplayStackStackFrame => Boolean(frame));
+  return lines.map((line) => parseStackLine(line)).filter((frame): frame is ReplayStackStackFrame => Boolean(frame));
 }
 
 function parseStackLine(line: string): ReplayStackStackFrame | null {

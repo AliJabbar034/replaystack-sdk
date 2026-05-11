@@ -9,14 +9,12 @@ ReplayStack supports NestJS through:
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ReplayStackClient } from '@replaystack/sdk';
-import {
-  createReplayStackNestExceptionFilter,
-  createReplayStackNestInterceptor,
-} from '@replaystack/sdk/nestjs';
+import { createReplayStackNestExceptionFilter, createReplayStackNestInterceptor } from '@replaystack/sdk/nestjs';
 
 const replayStack = new ReplayStackClient({
   apiKey: process.env.REPLAYSTACK_API_KEY!,
-  endpoint: process.env.REPLAYSTACK_ENDPOINT!,
+  // Optional — omit or leave env unset; SDK defaults to https://api.replaystack.co
+  endpoint: process.env.REPLAYSTACK_ENDPOINT,
   serviceName: 'nestjs-api',
   environment: process.env.NODE_ENV || 'development',
   appVersion: process.env.APP_VERSION,
@@ -37,5 +35,7 @@ const replayStack = new ReplayStackClient({
 })
 export class AppModule {}
 ```
+
+`REPLAYSTACK_ENDPOINT` and the `endpoint` option are optional; when missing, ingest uses **`https://api.replaystack.co`**.
 
 The exception filter captures stack traces, parsed stack frames, error name, error message, request payload, and breadcrumbs.

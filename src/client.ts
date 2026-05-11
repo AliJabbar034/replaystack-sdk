@@ -19,7 +19,7 @@ import {
   truncatePayload,
 } from './utils';
 
-const DEFAULT_ENDPOINT = 'https://api.replaystack.dev';
+const DEFAULT_ENDPOINT = 'https://api.replaystack.co';
 const DEFAULT_TIMEOUT_MS = 2500;
 const DEFAULT_RETRIES = 1;
 const DEFAULT_MAX_PAYLOAD_SIZE = 512 * 1024;
@@ -66,7 +66,8 @@ export class ReplayStack implements ReplayStackClientInterface {
         Number(process.env.REPLAYSTACK_MAX_PAYLOAD_SIZE_BYTES || DEFAULT_MAX_PAYLOAD_SIZE),
       maskFields: config.maskFields ?? [],
       ignoredPaths: config.ignoredPaths ?? [],
-      maxBreadcrumbs: config.maxBreadcrumbs ?? Number(process.env.REPLAYSTACK_MAX_BREADCRUMBS || DEFAULT_MAX_BREADCRUMBS),
+      maxBreadcrumbs:
+        config.maxBreadcrumbs ?? Number(process.env.REPLAYSTACK_MAX_BREADCRUMBS || DEFAULT_MAX_BREADCRUMBS),
     };
 
     const selectedFetch = config.fetchImpl || globalThis.fetch;

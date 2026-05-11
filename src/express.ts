@@ -6,10 +6,7 @@ import { createTraceId, getErrorDetails, headersToObject, normalizeEndpoint, sho
 
 const DEFAULT_IGNORED_PATHS = ['/health', '/metrics', '/favicon.ico'];
 
-export function replayStackExpressMiddleware(
-  client: ReplayStack,
-  options: ExpressMiddlewareOptions = {},
-) {
+export function replayStackExpressMiddleware(client: ReplayStack, options: ExpressMiddlewareOptions = {}) {
   const captureRequestBody = options.captureRequestBody ?? true;
   const captureResponseBody = options.captureResponseBody ?? true;
   const captureHeaders = options.captureHeaders ?? true;

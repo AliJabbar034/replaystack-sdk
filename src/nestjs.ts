@@ -18,12 +18,7 @@ export interface ReplayStackNestOptions {
   captureResponseBody?: boolean;
   captureHeaders?: boolean;
   getTraceId?: (req: any) => string | undefined;
-  shouldCapture?: (data: {
-    method: string;
-    endpoint?: string;
-    statusCode: number;
-    executionTimeMs: number;
-  }) => boolean;
+  shouldCapture?: (data: { method: string; endpoint?: string; statusCode: number; executionTimeMs: number }) => boolean;
 }
 
 /**

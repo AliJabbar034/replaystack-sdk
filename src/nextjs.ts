@@ -10,12 +10,7 @@ export interface NextRouteHandlerOptions {
   captureResponseBody?: boolean;
   captureHeaders?: boolean;
   getTraceId?: (request: Request) => string | undefined;
-  shouldCapture?: (data: {
-    method: string;
-    endpoint?: string;
-    statusCode: number;
-    executionTimeMs: number;
-  }) => boolean;
+  shouldCapture?: (data: { method: string; endpoint?: string; statusCode: number; executionTimeMs: number }) => boolean;
 }
 
 export type NextRouteHandler<TRequest extends Request = Request> = (
@@ -72,8 +67,7 @@ export function withReplayStackNext<TRequest extends Request = Request>(
           responsePayload = await readResponseBodySafely(response.clone());
         }
 
-        const shouldCapture =
-          options.shouldCapture?.({ method, endpoint, statusCode, executionTimeMs }) ?? true;
+        const shouldCapture = options.shouldCapture?.({ method, endpoint, statusCode, executionTimeMs }) ?? true;
 
         if (shouldCapture) {
           options.client.addBreadcrumb('Next.js route handler finished', {

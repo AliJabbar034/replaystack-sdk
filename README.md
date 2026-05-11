@@ -48,6 +48,35 @@ npm install express @replaystack/sdk
 
 ---
 
+## Development
+
+```bash
+npm run lint
+npm run lint:fix
+npm run format
+npm run format:check
+npm test
+npm run test:coverage
+npm run test:typecheck
+npm run release:verify   # lint + format check + tests + typecheck + build
+```
+
+### Publish to npm
+
+1. Ensure you are logged in: `npm login`
+2. Verify locally: `npm run release:verify`
+3. Dry run: `npm run publish:dry`
+4. Bump version (creates a git tag unless you use `--no-git-tag-version`): `npm run version:patch` / `version:minor` / `version:major`
+5. Publish: `npm run publish:npm` (runs `prepublishOnly` → `npm run build`)
+
+`prepublishOnly` only builds; run `release:verify` before publishing if you want the full gate.
+
+The package uses [Vitest](https://vitest.dev/) with V8 coverage. Tests cover the core client, utilities, async context, stack parsing, Express middleware, and **NestJS interceptor / exception filter** plus **Next.js App Router and Pages Router** wrappers (with mocked HTTP).
+
+Remaining gaps are mostly **branch coverage** inside Express body patching (`res.send` paths) and rarely hit Next helpers (`readResponseBodySafely` fallbacks, multipart hints).
+
+---
+
 ## Basic Client Setup
 
 ```ts
@@ -55,7 +84,7 @@ import { createReplayStackClient } from '@replaystack/sdk';
 
 const replayStack = createReplayStackClient({
   apiKey: process.env.REPLAYSTACK_API_KEY!,
-  endpoint: process.env.REPLAYSTACK_ENDPOINT || 'https://api.replaystack.dev',
+  endpoint: process.env.REPLAYSTACK_ENDPOINT || 'https://api.replaystack.co',
   serviceName: 'order-service',
   environment: process.env.NODE_ENV || 'development',
   appVersion: process.env.APP_VERSION,
@@ -83,7 +112,7 @@ app.use(express.json());
 
 const replayStack = createReplayStackClient({
   apiKey: process.env.REPLAYSTACK_API_KEY!,
-  endpoint: process.env.REPLAYSTACK_ENDPOINT || 'https://api.replaystack.dev',
+  endpoint: process.env.REPLAYSTACK_ENDPOINT || 'https://api.replaystack.co',
   serviceName: 'main-api',
   environment: process.env.NODE_ENV || 'development',
   appVersion: process.env.APP_VERSION,
@@ -290,7 +319,7 @@ try {
 ```ts
 createReplayStackClient({
   apiKey: 'rs_live_xxxxx',
-  endpoint: 'https://api.replaystack.dev',
+  endpoint: 'https://api.replaystack.co',
   serviceName: 'order-service',
   environment: 'production',
   appVersion: '1.2.0',
@@ -307,31 +336,34 @@ createReplayStackClient({
 });
 ```
 
-| Option | Description | Default |
-|---|---|---|
-| `apiKey` | Project API key from ReplayStack dashboard | Required |
-| `endpoint` | ReplayStack backend base URL | `https://api.replaystack.dev` |
-| `serviceName` | Current backend service name | `undefined` |
-| `environment` | local/development/staging/production | `NODE_ENV` |
-| `appVersion` | App release version | `undefined` |
-| `commitHash` | Deployment commit hash | `undefined` |
-| `enabled` | Enable or disable SDK | `true` |
-| `timeoutMs` | Request timeout for ingestion | `2500` |
-| `retries` | Retry count if ingestion fails | `1` |
-| `sampleRate` | Capture percentage from `0` to `1` | `1` |
-| `captureSuccess` | Capture successful events | `true` |
-| `maxPayloadSizeBytes` | Payload truncation size | `524288` |
-| `maxBreadcrumbs` | Number of breadcrumbs kept per request/client | `50` |
-| `maskFields` | Custom fields to mask | `[]` |
-| `ignoredPaths` | Paths to ignore | `[]` |
+| Option                | Description                                   | Default                      |
+| --------------------- | --------------------------------------------- | ---------------------------- |
+| `apiKey`              | Project API key from ReplayStack dashboard    | Required                     |
+| `endpoint`            | ReplayStack backend base URL (optional)       | `https://api.replaystack.co` |
+| `serviceName`         | Current backend service name                  | `undefined`                  |
+| `environment`         | local/development/staging/production          | `NODE_ENV`                   |
+| `appVersion`          | App release version                           | `undefined`                  |
+| `commitHash`          | Deployment commit hash                        | `undefined`                  |
+| `enabled`             | Enable or disable SDK                         | `true`                       |
+| `timeoutMs`           | Request timeout for ingestion                 | `2500`                       |
+| `retries`             | Retry count if ingestion fails                | `1`                          |
+| `sampleRate`          | Capture percentage from `0` to `1`            | `1`                          |
+| `captureSuccess`      | Capture successful events                     | `true`                       |
+| `maxPayloadSizeBytes` | Payload truncation size                       | `524288`                     |
+| `maxBreadcrumbs`      | Number of breadcrumbs kept per request/client | `50`                         |
+| `maskFields`          | Custom fields to mask                         | `[]`                         |
+| `ignoredPaths`        | Paths to ignore                               | `[]`                         |
 
 ---
 
 ## Environment Variables
 
+`REPLAYSTACK_ENDPOINT` is **optional**. If unset, the client uses **`https://api.replaystack.co`** (same as omitting `endpoint` in config). Set it for staging, self-hosted, or regional gateways.
+
 ```env
 REPLAYSTACK_API_KEY=rs_live_xxxxxxxxxxxxxxxxx
-REPLAYSTACK_ENDPOINT=https://api.replaystack.dev
+# Optional — defaults to https://api.replaystack.co
+# REPLAYSTACK_ENDPOINT=https://api.replaystack.co
 REPLAYSTACK_SERVICE_NAME=order-service
 REPLAYSTACK_APP_VERSION=1.2.0
 REPLAYSTACK_COMMIT_HASH=a7f91c
@@ -417,51 +449,6 @@ createReplayStackClient({
 });
 ```
 
----
-
-## Backend and Dashboard Flow
-
-```text
-User API request
-   ↓
-Express middleware captures request/response
-   ↓
-If exception occurs, error middleware captures stack frames and breadcrumbs
-   ↓
-SDK masks sensitive data
-   ↓
-SDK sends event to ReplayStack ingestion API
-   ↓
-Backend validates project API key
-   ↓
-Backend checks plan usage limits
-   ↓
-Backend pushes event to BullMQ queue
-   ↓
-Worker stores event in PostgreSQL
-   ↓
-Worker updates error groups, alerts, and usage
-   ↓
-Worker publishes Redis Pub/Sub message
-   ↓
-SSE endpoint sends real-time update to dashboard
-```
-
----
-
-## Backend Database Update Required
-
-To store exception detail properly, add these columns to the `events` table:
-
-```sql
-ALTER TABLE events
-ADD COLUMN error_name VARCHAR(150),
-ADD COLUMN stack_frames JSONB,
-ADD COLUMN breadcrumbs JSONB;
-```
-
----
-
 ## Build
 
 ```bash
@@ -489,24 +476,20 @@ MIT
 
 ReplayStack now supports four integration styles:
 
-| Framework / Use Case | Integration Method |
-|---|---|
-| Express | `replayStackExpressMiddleware` + `replayStackExpressErrorMiddleware` |
-| Next.js App Router | `withReplayStackNext` |
-| Next.js Pages Router | `withReplayStackNextApi` |
-| NestJS | `createReplayStackNestInterceptor` + `createReplayStackNestExceptionFilter` |
-| Any backend / queue / cron | `captureEvent()` / `captureException()` |
-| Unsupported language | Direct HTTP API: `POST /api/v1/ingest/events` |
+| Framework / Use Case       | Integration Method                                                          |
+| -------------------------- | --------------------------------------------------------------------------- |
+| Express                    | `replayStackExpressMiddleware` + `replayStackExpressErrorMiddleware`        |
+| Next.js App Router         | `withReplayStackNext`                                                       |
+| Next.js Pages Router       | `withReplayStackNextApi`                                                    |
+| NestJS                     | `createReplayStackNestInterceptor` + `createReplayStackNestExceptionFilter` |
+| Any backend / queue / cron | `captureEvent()` / `captureException()`                                     |
+| Unsupported language       | Direct HTTP API: `POST /api/v1/ingest/events`                               |
 
 ### Express
 
 ```ts
 import express from 'express';
-import {
-  ReplayStackClient,
-  replayStackExpressMiddleware,
-  replayStackExpressErrorMiddleware,
-} from '@replaystack/sdk';
+import { ReplayStackClient, replayStackExpressMiddleware, replayStackExpressErrorMiddleware } from '@replaystack/sdk';
 
 const app = express();
 app.use(express.json());
@@ -636,10 +619,7 @@ NestJS integration uses an interceptor for normal request/response capture and a
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ReplayStackClient } from '@replaystack/sdk';
-import {
-  createReplayStackNestExceptionFilter,
-  createReplayStackNestInterceptor,
-} from '@replaystack/sdk/nestjs';
+import { createReplayStackNestExceptionFilter, createReplayStackNestInterceptor } from '@replaystack/sdk/nestjs';
 
 const replayStack = new ReplayStackClient({
   apiKey: process.env.REPLAYSTACK_API_KEY!,

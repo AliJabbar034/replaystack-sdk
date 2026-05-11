@@ -39,7 +39,7 @@ export interface ReplayStackConfig {
   /** Project API key generated from ReplayStack dashboard. */
   apiKey: string;
 
-  /** ReplayStack backend base URL. Example: https://api.replaystack.dev */
+  /** Base URL for ingest (no `/api/v1/...` path). Defaults to `https://api.replaystack.co` when omitted and `REPLAYSTACK_ENDPOINT` is unset. */
   endpoint?: string;
 
   /** Service/application name shown in ReplayStack dashboard. */
@@ -146,12 +146,7 @@ export interface ExpressMiddlewareOptions {
   getTraceId?: (req: unknown) => string | undefined;
 
   /** Decide whether request should be captured. */
-  shouldCapture?: (data: {
-    method: string;
-    path: string;
-    statusCode: number;
-    executionTimeMs: number;
-  }) => boolean;
+  shouldCapture?: (data: { method: string; path: string; statusCode: number; executionTimeMs: number }) => boolean;
 }
 
 export interface ReplayStackClientInterface {

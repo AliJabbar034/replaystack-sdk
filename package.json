@@ -23,10 +23,10 @@
   ],
   "author": "ReplayStack",
   "license": "MIT",
-  "homepage": "https://replaystack.dev",
+  "homepage": "https://replaystack.co",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AliJabbar034/replaystack-sdk.git"
+    "url": "git+https://github.com/AliJabbar034/replaystack-sdk.git"
   },
   "bugs": {
     "url": "https://github.com/AliJabbar034/replaystack-sdk/issues"
@@ -44,11 +44,25 @@
     "build": "tsc -p tsconfig.json",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "release:verify": "npm run lint && npm run format:check && npm run test && npm run test:typecheck && npm run build",
+    "version:patch": "npm version patch",
+    "version:minor": "npm version minor",
+    "version:major": "npm version major",
+    "publish:dry": "npm publish --dry-run",
+    "publish:npm": "npm publish"
   },
   "peerDependencies": {
-    "express": ">=4.0.0",
     "@nestjs/common": ">=9.0.0",
+    "express": ">=4.0.0",
     "rxjs": ">=7.0.0"
   },
   "peerDependenciesMeta": {
@@ -63,12 +77,19 @@
     }
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@nestjs/common": "^10.3.8",
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.30",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^10.3.0",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3",
     "rimraf": "^5.0.5",
+    "rxjs": "^7.8.1",
     "typescript": "^5.4.5",
-    "@nestjs/common": "^10.3.8",
-    "rxjs": "^7.8.1"
+    "typescript-eslint": "^8.59.3",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=18"

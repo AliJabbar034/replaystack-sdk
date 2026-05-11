@@ -192,15 +192,15 @@ You can keep `event_headers` and `event_logs` as separate tables; the ingest API
 
 The backend should publish these event types to frontend dashboards:
 
-| Type | Purpose |
-|---|---|
-| `event.created` | New event captured |
-| `event.failed` | Failed event captured |
+| Type                  | Purpose                        |
+| --------------------- | ------------------------------ |
+| `event.created`       | New event captured             |
+| `event.failed`        | Failed event captured          |
 | `error_group.updated` | Error group created or updated |
-| `alert.triggered` | Alert rule matched |
-| `usage.updated` | Usage counter changed |
-| `replay.started` | Replay job started |
-| `replay.completed` | Replay job completed |
+| `alert.triggered`     | Alert rule matched             |
+| `usage.updated`       | Usage counter changed          |
+| `replay.started`      | Replay job started             |
+| `replay.completed`    | Replay job completed           |
 
 ---
 
@@ -223,44 +223,4 @@ The backend should publish these event types to frontend dashboards:
   },
   "createdAt": "2026-05-09T10:00:00Z"
 }
-```
-
----
-
-## Dashboard SSE Endpoint
-
-```http
-GET /api/projects/:projectId/stream
-Authorization: Bearer jwt_token
-Accept: text/event-stream
-```
-
-The dashboard should use `EventSource` or a fetch-based SSE client.
-
----
-
-## Recommended Backend Flow
-
-```text
-POST /api/ingest/v1/events
-   ↓
-Validate API key
-   ↓
-Resolve project
-   ↓
-Check plan usage
-   ↓
-Apply server-side masking
-   ↓
-Push to BullMQ
-   ↓
-Return success quickly
-   ↓
-Worker stores event
-   ↓
-Worker updates usage/error groups/alerts
-   ↓
-Worker publishes Redis Pub/Sub
-   ↓
-SSE sends update to dashboard
 ```
