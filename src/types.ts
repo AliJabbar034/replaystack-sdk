@@ -88,6 +88,21 @@ export interface ReplayStackConfig {
 
   /** Optional hook called when SDK fails internally. */
   onError?: (error: Error) => void;
+
+  /**
+   * Max prepared ingest payloads to retain in memory when the API is unreachable (after retries).
+   * When full, oldest entries are dropped. Default `100`. Set to `0` to disable offline buffering.
+   */
+  offlineQueueMax?: number;
+
+  /**
+   * If greater than zero, periodically calls `flush()` to drain the offline queue when the API recovers.
+   * Useful for long-running servers without a custom health hook.
+   */
+  flushIntervalMs?: number;
+
+  /** Called when the offline queue drops the oldest event because `offlineQueueMax` was exceeded. */
+  onQueueDrop?: (info: { reason: 'max_queue_size' }) => void;
 }
 
 export interface ReplayStackLog {
@@ -167,4 +182,20 @@ export interface ReplayStackClientInterface {
   clearBreadcrumbs(): void;
   getBreadcrumbs(): ReplayStackBreadcrumb[];
   flush(): Promise<void>;
+  /** Stops periodic flush, then drains the offline queue. After this, capture calls are no-ops. */
+  close(): Promise<void>;
+}
+
+export interface InstallReplayStackProcessGuardsOptions {
+  /** Register `unhandledRejection` → `captureException` (default: true). */
+  unhandledRejection?: boolean;
+  /** Register `uncaughtException` → `captureException` (default: true). */
+  uncaughtException?: boolean;
+  /**
+   * Flush the offline queue on process shutdown signals and `beforeExit` (default: true).
+   * Does not call `process.exit`; combine with your own shutdown logic if needed.
+   */
+  flushOnShutdown?: boolean;
+  /** Signals that trigger a best-effort `flush()` when `flushOnShutdown` is true. Default: `SIGINT`, `SIGTERM`. */
+  shutdownSignals?: NodeJS.Signals[];
 }

@@ -277,4 +277,153 @@ describe('ReplayStack', () => {
     });
     await expect(client.flush()).resolves.toBeUndefined();
   });
+
+  it('queues failed ingest and flush sends when API recovers', async () => {
+    let stable = false;
+    const fetchImpl = vi.fn<typeof fetch>();
+    fetchImpl.mockImplementation(async () => {
+      if (!stable) {
+        throw new Error('connection refused');
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+      } as unknown as globalThis.Response;
+    });
+
+    const client = new ReplayStack({
+      apiKey: 'k',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      retries: 0,
+      offlineQueueMax: 50,
+    });
+
+    await client.captureEvent({
+      eventType: 'custom',
+      endpoint: '/q',
+      status: 'success',
+      statusCode: 200,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    stable = true;
+    await client.flush();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await client.close();
+  });
+
+  it('does not queue when offlineQueueMax is 0', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    fetchImpl.mockRejectedValue(new Error('down'));
+
+    const client = new ReplayStack({
+      apiKey: 'k',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      retries: 0,
+      offlineQueueMax: 0,
+    });
+
+    await client.captureEvent({
+      eventType: 'custom',
+      endpoint: '/q',
+      status: 'success',
+      statusCode: 200,
+    });
+    await client.flush();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await client.close();
+  });
+
+  it('drops oldest when queue exceeds offlineQueueMax', async () => {
+    const onQueueDrop = vi.fn();
+    const fetchImpl = vi.fn<typeof fetch>();
+    fetchImpl.mockRejectedValue(new Error('down'));
+
+    const client = new ReplayStack({
+      apiKey: 'k',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      retries: 0,
+      offlineQueueMax: 1,
+      onQueueDrop,
+    });
+
+    await client.captureEvent({
+      eventType: 'custom',
+      endpoint: '/first',
+      status: 'success',
+      statusCode: 200,
+    });
+    await client.captureEvent({
+      eventType: 'custom',
+      endpoint: '/second',
+      status: 'success',
+      statusCode: 200,
+    });
+    expect(onQueueDrop).toHaveBeenCalled();
+
+    fetchImpl.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true }),
+    } as unknown as globalThis.Response);
+
+    await client.flush();
+    const lastCall = fetchImpl.mock.calls[fetchImpl.mock.calls.length - 1];
+    const body = JSON.parse((lastCall[1] as RequestInit).body as string);
+    expect(body.endpoint).toBe('/second');
+    await client.close();
+  });
+
+  it('flushInterval triggers periodic flush', async () => {
+    vi.useFakeTimers();
+    let n = 0;
+    const fetchImpl = vi.fn<typeof fetch>();
+    fetchImpl.mockImplementation(async () => {
+      n += 1;
+      if (n === 1) {
+        throw new Error('down');
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+      } as unknown as globalThis.Response;
+    });
+
+    const client = new ReplayStack({
+      apiKey: 'k',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      retries: 0,
+      flushIntervalMs: 5_000,
+      offlineQueueMax: 10,
+    });
+
+    await client.captureEvent({
+      eventType: 'custom',
+      endpoint: '/tick',
+      status: 'success',
+      statusCode: 200,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+    await client.close();
+  });
+
+  it('close disables new captures', async () => {
+    const fetchImpl = mockOkFetch();
+    const client = new ReplayStack({ apiKey: 'k', fetchImpl, retries: 0 });
+    await client.close();
+    await client.captureEvent({
+      eventType: 'custom',
+      endpoint: '/x',
+      status: 'success',
+      statusCode: 200,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 });

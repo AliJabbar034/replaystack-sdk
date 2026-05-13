@@ -26,6 +26,7 @@ const DEFAULT_TIMEOUT_MS = 2500;
 const DEFAULT_RETRIES = 1;
 const DEFAULT_MAX_PAYLOAD_SIZE = 512 * 1024;
 const DEFAULT_MAX_BREADCRUMBS = 50;
+const DEFAULT_OFFLINE_QUEUE_MAX = 100;
 
 export class ReplayStack implements ReplayStackClientInterface {
   private readonly config: Required<
@@ -42,12 +43,19 @@ export class ReplayStack implements ReplayStackClientInterface {
       | 'maskFields'
       | 'ignoredPaths'
       | 'maxBreadcrumbs'
+      | 'offlineQueueMax'
+      | 'flushIntervalMs'
     >
   > &
     Omit<ReplayStackConfig, 'apiKey'>;
 
   private readonly fetchImpl: typeof fetch;
   private breadcrumbs: ReplayStackBreadcrumb[] = [];
+  private readonly offlineQueue: ReplayStackEventInput[] = [];
+  private drainMode = false;
+  private closed = false;
+  private flushTimer: ReturnType<typeof setInterval> | undefined;
+  private flushChain: Promise<void> = Promise.resolve();
 
   constructor(config: ReplayStackConfig) {
     if (!config.apiKey) {
@@ -70,6 +78,11 @@ export class ReplayStack implements ReplayStackClientInterface {
       ignoredPaths: config.ignoredPaths ?? [],
       maxBreadcrumbs:
         config.maxBreadcrumbs ?? Number(process.env.REPLAYSTACK_MAX_BREADCRUMBS || DEFAULT_MAX_BREADCRUMBS),
+      offlineQueueMax:
+        config.offlineQueueMax ??
+        Number(process.env.REPLAYSTACK_OFFLINE_QUEUE_MAX || DEFAULT_OFFLINE_QUEUE_MAX),
+      flushIntervalMs:
+        config.flushIntervalMs ?? Number(process.env.REPLAYSTACK_FLUSH_INTERVAL_MS || 0),
     };
 
     const selectedFetch = config.fetchImpl || globalThis.fetch;
@@ -78,10 +91,18 @@ export class ReplayStack implements ReplayStackClientInterface {
     }
 
     this.fetchImpl = selectedFetch.bind(globalThis);
+
+    if (this.config.flushIntervalMs > 0) {
+      this.flushTimer = setInterval(() => {
+        void this.flush().catch(() => {});
+      }, this.config.flushIntervalMs);
+      this.flushTimer.unref?.();
+    }
   }
 
   async captureEvent(event: ReplayStackEventInput): Promise<ReplayStackCaptureResponse | null> {
     try {
+      if (this.closed) return null;
       if (!this.config.enabled) return null;
       if (!shouldSample(this.config.sampleRate)) return null;
 
@@ -164,8 +185,61 @@ export class ReplayStack implements ReplayStackClientInterface {
   }
 
   async flush(): Promise<void> {
-    // Current SDK sends immediately. Method is provided for future batching support.
-    return Promise.resolve();
+    this.flushChain = this.flushChain.then(() => this.drainOfflineQueue());
+    return this.flushChain;
+  }
+
+  async close(): Promise<void> {
+    if (this.closed) {
+      await this.flushChain;
+      return;
+    }
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = undefined;
+    }
+    this.closed = true;
+    this.flushChain = this.flushChain.then(() => this.drainOfflineQueue());
+    await this.flushChain;
+  }
+
+  private async drainOfflineQueue(): Promise<void> {
+    if (this.offlineQueue.length === 0) {
+      return;
+    }
+
+    this.drainMode = true;
+    try {
+      while (this.offlineQueue.length > 0) {
+        const payload = this.offlineQueue[0]!;
+        const response = await this.sendWithRetry(payload);
+        if (response) {
+          this.offlineQueue.shift();
+        } else {
+          break;
+        }
+      }
+    } finally {
+      this.drainMode = false;
+    }
+  }
+
+  private enqueueOffline(payload: ReplayStackEventInput): void {
+    if (this.closed) {
+      return;
+    }
+    const max = this.config.offlineQueueMax;
+    if (max <= 0 || this.drainMode) {
+      return;
+    }
+
+    const copy = safeJsonClone(payload) as ReplayStackEventInput;
+    this.offlineQueue.push(copy);
+
+    while (this.offlineQueue.length > max) {
+      this.offlineQueue.shift();
+      this.config.onQueueDrop?.({ reason: 'max_queue_size' });
+    }
   }
 
   private prepareEventPayload(event: ReplayStackEventInput): ReplayStackEventInput {
@@ -224,7 +298,12 @@ export class ReplayStack implements ReplayStackClientInterface {
       }
     }
 
-    if (lastError) this.reportInternalError(lastError);
+    if (lastError) {
+      this.reportInternalError(lastError);
+      if (!this.drainMode) {
+        this.enqueueOffline(payload);
+      }
+    }
     return null;
   }
 

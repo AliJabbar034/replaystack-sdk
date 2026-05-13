@@ -71,7 +71,7 @@ npm run release:verify   # lint + format check + tests + typecheck + build
 
 `prepublishOnly` only builds; run `release:verify` before publishing if you want the full gate.
 
-The package uses [Vitest](https://vitest.dev/) with V8 coverage. Tests cover the core client, utilities, async context, stack parsing, Express middleware, and **NestJS interceptor / exception filter** plus **Next.js App Router and Pages Router** wrappers (with mocked HTTP).
+The package uses [Vitest](https://vitest.dev/) with V8 coverage. Tests cover the core client (including offline queue, `flush`, and periodic flush), utilities, async context, stack parsing, Express middleware, and **NestJS interceptor / exception filter** plus **Next.js App Router and Pages Router** wrappers (with mocked HTTP).
 
 Remaining gaps are mostly **branch coverage** inside Express body patching (`res.send` paths) and rarely hit Next helpers (`readResponseBodySafely` fallbacks, multipart hints).
 
@@ -333,6 +333,8 @@ createReplayStackClient({
   maxBreadcrumbs: 50,
   maskFields: ['password', 'token', 'authorization'],
   ignoredPaths: ['/health', '/metrics'],
+  offlineQueueMax: 100,
+  flushIntervalMs: 0,
 });
 ```
 
@@ -353,6 +355,31 @@ createReplayStackClient({
 | `maxBreadcrumbs`      | Number of breadcrumbs kept per request/client | `50`                         |
 | `maskFields`          | Custom fields to mask                         | `[]`                         |
 | `ignoredPaths`        | Paths to ignore                               | `[]`                         |
+| `offlineQueueMax`     | Max prepared events held in memory after ingest still fails after retries; oldest dropped when full. `0` disables the queue | `100` |
+| `flushIntervalMs`     | If greater than `0`, periodically calls `flush()` to drain the offline queue | `0` (disabled) |
+| `onQueueDrop`         | Callback when the queue drops the oldest event because `offlineQueueMax` was exceeded | none |
+
+---
+
+## Ingest reliability: offline queue, flush, and shutdown
+
+When the ingest HTTP request fails after the configured retries, the SDK can keep a **bounded in-memory queue** of prepared events (`offlineQueueMax`, default `100`). Set `offlineQueueMax` to `0` to turn this off (failed sends are dropped immediately after retries).
+
+- **`flush()`** — Sends queued events in order until the queue is empty or a send fails again.
+- **`flushIntervalMs`** — If set to a positive number, the client runs `flush()` on that interval so events drain automatically when the API recovers.
+- **`close()`** — Stops new automatic capture where applicable, cancels periodic flush, then drains the queue once (best effort).
+- **`onQueueDrop`** — Optional hook when the queue is full and the oldest event is removed to make room.
+
+In **Node.js**, you can register process hooks so the client attempts to flush before exit:
+
+```ts
+import { createReplayStackClient, installReplayStackProcessGuards } from '@replaystack/sdk';
+
+const replayStack = createReplayStackClient({ apiKey: process.env.REPLAYSTACK_API_KEY! });
+installReplayStackProcessGuards(replayStack);
+```
+
+This wires `unhandledRejection`, `uncaughtException`, and `beforeExit` to call `flush()` best effort. It does **not** guarantee delivery on hard crashes (for example `SIGKILL` or abrupt process death); for that you need an out-of-process buffer or WAL outside this SDK.
 
 ---
 
@@ -374,6 +401,10 @@ REPLAYSTACK_SAMPLE_RATE=1
 REPLAYSTACK_CAPTURE_SUCCESS=true
 REPLAYSTACK_MAX_PAYLOAD_SIZE_BYTES=524288
 REPLAYSTACK_MAX_BREADCRUMBS=50
+# Optional — max events to buffer in memory after failed ingest (0 = disable queue)
+# REPLAYSTACK_OFFLINE_QUEUE_MAX=100
+# Optional — periodic flush interval in ms (0 = disabled)
+# REPLAYSTACK_FLUSH_INTERVAL_MS=0
 ```
 
 ---
@@ -473,7 +504,7 @@ MIT
 
 ---
 
-## Framework Support in v1.1.0
+## Framework support
 
 ReplayStack now supports four integration styles:
 
