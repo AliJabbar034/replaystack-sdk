@@ -79,10 +79,8 @@ export class ReplayStack implements ReplayStackClientInterface {
       maxBreadcrumbs:
         config.maxBreadcrumbs ?? Number(process.env.REPLAYSTACK_MAX_BREADCRUMBS || DEFAULT_MAX_BREADCRUMBS),
       offlineQueueMax:
-        config.offlineQueueMax ??
-        Number(process.env.REPLAYSTACK_OFFLINE_QUEUE_MAX || DEFAULT_OFFLINE_QUEUE_MAX),
-      flushIntervalMs:
-        config.flushIntervalMs ?? Number(process.env.REPLAYSTACK_FLUSH_INTERVAL_MS || 0),
+        config.offlineQueueMax ?? Number(process.env.REPLAYSTACK_OFFLINE_QUEUE_MAX || DEFAULT_OFFLINE_QUEUE_MAX),
+      flushIntervalMs: config.flushIntervalMs ?? Number(process.env.REPLAYSTACK_FLUSH_INTERVAL_MS || 0),
     };
 
     const selectedFetch = config.fetchImpl || globalThis.fetch;

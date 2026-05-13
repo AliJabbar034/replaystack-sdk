@@ -338,26 +338,26 @@ createReplayStackClient({
 });
 ```
 
-| Option                | Description                                   | Default                      |
-| --------------------- | --------------------------------------------- | ---------------------------- |
-| `apiKey`              | Project API key from ReplayStack dashboard    | Required                     |
-| `endpoint`            | ReplayStack backend base URL (optional)       | `https://api.replaystack.co` |
-| `serviceName`         | Current backend service name                  | `undefined`                  |
-| `environment`         | local/development/staging/production          | `NODE_ENV`                   |
-| `appVersion`          | App release version                           | `undefined`                  |
-| `commitHash`          | Deployment commit hash                        | `undefined`                  |
-| `enabled`             | Enable or disable SDK                         | `true`                       |
-| `timeoutMs`           | Request timeout for ingestion                 | `2500`                       |
-| `retries`             | Retry count if ingestion fails                | `1`                          |
-| `sampleRate`          | Capture percentage from `0` to `1`            | `1`                          |
-| `captureSuccess`      | Capture successful events                     | `true`                       |
-| `maxPayloadSizeBytes` | Payload truncation size                       | `524288`                     |
-| `maxBreadcrumbs`      | Number of breadcrumbs kept per request/client | `50`                         |
-| `maskFields`          | Custom fields to mask                         | `[]`                         |
-| `ignoredPaths`        | Paths to ignore                               | `[]`                         |
-| `offlineQueueMax`     | Max prepared events held in memory after ingest still fails after retries; oldest dropped when full. `0` disables the queue | `100` |
-| `flushIntervalMs`     | If greater than `0`, periodically calls `flush()` to drain the offline queue | `0` (disabled) |
-| `onQueueDrop`         | Callback when the queue drops the oldest event because `offlineQueueMax` was exceeded | none |
+| Option                | Description                                                                                                                 | Default                      |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `apiKey`              | Project API key from ReplayStack dashboard                                                                                  | Required                     |
+| `endpoint`            | ReplayStack backend base URL (optional)                                                                                     | `https://api.replaystack.co` |
+| `serviceName`         | Current backend service name                                                                                                | `undefined`                  |
+| `environment`         | local/development/staging/production                                                                                        | `NODE_ENV`                   |
+| `appVersion`          | App release version                                                                                                         | `undefined`                  |
+| `commitHash`          | Deployment commit hash                                                                                                      | `undefined`                  |
+| `enabled`             | Enable or disable SDK                                                                                                       | `true`                       |
+| `timeoutMs`           | Request timeout for ingestion                                                                                               | `2500`                       |
+| `retries`             | Retry count if ingestion fails                                                                                              | `1`                          |
+| `sampleRate`          | Capture percentage from `0` to `1`                                                                                          | `1`                          |
+| `captureSuccess`      | Capture successful events                                                                                                   | `true`                       |
+| `maxPayloadSizeBytes` | Payload truncation size                                                                                                     | `524288`                     |
+| `maxBreadcrumbs`      | Number of breadcrumbs kept per request/client                                                                               | `50`                         |
+| `maskFields`          | Custom fields to mask                                                                                                       | `[]`                         |
+| `ignoredPaths`        | Paths to ignore                                                                                                             | `[]`                         |
+| `offlineQueueMax`     | Max prepared events held in memory after ingest still fails after retries; oldest dropped when full. `0` disables the queue | `100`                        |
+| `flushIntervalMs`     | If greater than `0`, periodically calls `flush()` to drain the offline queue                                                | `0` (disabled)               |
+| `onQueueDrop`         | Callback when the queue drops the oldest event because `offlineQueueMax` was exceeded                                       | none                         |
 
 ---
 
