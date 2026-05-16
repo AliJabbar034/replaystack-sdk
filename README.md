@@ -48,6 +48,22 @@ npm install express @replaystack/sdk
 
 ---
 
+## Package entry points
+
+One npm package, multiple import paths. **NestJS and Next.js helpers are not on the root entry** (since v1.0.4)—use subpaths so Express apps do not need `@nestjs/common`.
+
+| Import from                | Use for                                                                    |
+| -------------------------- | -------------------------------------------------------------------------- |
+| `@replaystack/sdk`         | Client, Express middleware, `captureEvent` / `captureException`, utils     |
+| `@replaystack/sdk/express` | Express middleware only                                                    |
+| `@replaystack/sdk/nextjs`  | `withReplayStackNext`, `withReplayStackNextApi`                            |
+| `@replaystack/sdk/nestjs`  | `createReplayStackNestInterceptor`, `createReplayStackNestExceptionFilter` |
+| `@replaystack/sdk/client`  | Core client only                                                           |
+
+**Upgrading from v1.0.3?** If you see `Cannot find module '@nestjs/common'` when importing from `@replaystack/sdk`, upgrade to `^1.0.4` and move Nest/Next imports to the subpaths above. Full guide: [docs/PACKAGE-ENTRYPOINTS.md](./docs/PACKAGE-ENTRYPOINTS.md). See [CHANGELOG.md](./CHANGELOG.md).
+
+---
+
 ## Development
 
 ```bash
@@ -506,16 +522,16 @@ MIT
 
 ## Framework support
 
-ReplayStack now supports four integration styles:
+ReplayStack supports four integration styles:
 
-| Framework / Use Case       | Integration Method                                                          |
-| -------------------------- | --------------------------------------------------------------------------- |
-| Express                    | `replayStackExpressMiddleware` + `replayStackExpressErrorMiddleware`        |
-| Next.js App Router         | `withReplayStackNext`                                                       |
-| Next.js Pages Router       | `withReplayStackNextApi`                                                    |
-| NestJS                     | `createReplayStackNestInterceptor` + `createReplayStackNestExceptionFilter` |
-| Any backend / queue / cron | `captureEvent()` / `captureException()`                                     |
-| Unsupported language       | Direct HTTP API: `POST /api/v1/ingest/events`                               |
+| Framework / Use Case       | Import helpers from       | Integration method                                                          |
+| -------------------------- | ------------------------- | --------------------------------------------------------------------------- |
+| Express                    | `@replaystack/sdk`        | `replayStackExpressMiddleware` + `replayStackExpressErrorMiddleware`        |
+| Next.js App Router         | `@replaystack/sdk/nextjs` | `withReplayStackNext`                                                       |
+| Next.js Pages Router       | `@replaystack/sdk/nextjs` | `withReplayStackNextApi`                                                    |
+| NestJS                     | `@replaystack/sdk/nestjs` | `createReplayStackNestInterceptor` + `createReplayStackNestExceptionFilter` |
+| Any backend / queue / cron | `@replaystack/sdk`        | `captureEvent()` / `captureException()`                                     |
+| Unsupported language       | —                         | Direct HTTP API: `POST /api/v1/ingest/events`                               |
 
 ### Express
 

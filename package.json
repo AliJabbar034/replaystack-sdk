@@ -1,6 +1,6 @@
 {
   "name": "@replaystack/sdk",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Official ReplayStack SDK for Node.js 18+: capture HTTP requests, responses, exceptions, stack frames, and breadcrumbs; ship them to ReplayStack for debugging, replay, and dashboards. First-class Express, Next.js, and NestJS integrations.",
   "keywords": [
     "replaystack",
@@ -37,6 +37,7 @@
     "dist",
     "docs",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -58,7 +59,7 @@
     "version:minor": "npm version minor",
     "version:major": "npm version major",
     "publish:dry": "npm publish --dry-run",
-    "publish:npm": "npm publish"
+    "publish": "npm publish"
   },
   "peerDependencies": {
     "@nestjs/common": ">=9.0.0",
@@ -101,6 +102,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
     },
     "./express": {
       "types": "./dist/express.d.ts",
