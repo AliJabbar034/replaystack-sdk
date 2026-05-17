@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { ReplayStack } from './client';
 import { runWithReplayStackContext } from './context';
-import { ExpressMiddlewareOptions } from './types';
+import { ExpressMiddlewareOptions, ReplayStackBreadcrumb } from './types';
 import {
   createTraceId,
   getErrorDetails,
@@ -9,14 +9,56 @@ import {
   normalizeEndpoint,
   shouldIgnorePath,
   buildAbsoluteRequestUrlFromParts,
+  normalizeBreadcrumbs,
 } from './utils';
 
 const DEFAULT_IGNORED_PATHS = ['/health', '/metrics', '/favicon.ico'];
+
+/** Optional metadata on thrown errors for richer ReplayStack error-middleware capture. */
+export type ReplayStackErrorCapture = {
+  responsePayload?: unknown;
+  statusCode?: number;
+};
+
+export function getReplayStackErrorCapture(error: unknown): ReplayStackErrorCapture | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const rs = (error as { replayStack?: ReplayStackErrorCapture }).replayStack;
+  if (!rs || typeof rs !== 'object') return undefined;
+  return rs;
+}
+
+/** Build an Error for `throw` with optional JSON for ReplayStack error-middleware response capture. */
+export function captureFailure(message: string, responsePayload?: unknown, statusCode = 500): Error {
+  const err = new Error(message);
+  (err as Error & { replayStack: ReplayStackErrorCapture }).replayStack = {
+    responsePayload: responsePayload ?? { message },
+    statusCode,
+  };
+  return err;
+}
+
+function errorResponsePayload(error: unknown, errorMessage: string, breadcrumbs: ReplayStackBreadcrumb[]): unknown {
+  const capture = getReplayStackErrorCapture(error);
+  if (capture?.responsePayload !== undefined && capture.responsePayload !== null) {
+    return capture.responsePayload;
+  }
+  return {
+    message: errorMessage,
+    breadcrumbs: normalizeBreadcrumbs(breadcrumbs),
+  };
+}
+
+function errorStatusCode(error: unknown, res: Response): number {
+  const fromCapture = getReplayStackErrorCapture(error)?.statusCode;
+  if (typeof fromCapture === 'number' && fromCapture >= 400) return fromCapture;
+  return res.statusCode >= 400 ? res.statusCode : 500;
+}
 
 export function replayStackExpressMiddleware(client: ReplayStack, options: ExpressMiddlewareOptions = {}) {
   const captureRequestBody = options.captureRequestBody ?? true;
   const captureResponseBody = options.captureResponseBody ?? true;
   const captureHeaders = options.captureHeaders ?? true;
+  const frameworkBreadcrumbs = options.automaticFrameworkBreadcrumbs ?? false;
   const ignoredPaths = [...DEFAULT_IGNORED_PATHS, ...(options.ignoredPaths || [])];
 
   return function replayStackMiddleware(req: Request, res: Response, next: NextFunction) {
@@ -36,14 +78,16 @@ export function replayStackExpressMiddleware(client: ReplayStack, options: Expre
       const traceId = options.getTraceId?.(req) || (req.headers['x-trace-id'] as string) || createTraceId();
       res.setHeader('x-trace-id', traceId);
 
-      client.addBreadcrumb('HTTP request started', {
-        category: 'http',
-        level: 'info',
-        metadata: {
-          method: req.method,
-          endpoint: path || req.path,
-        },
-      });
+      if (frameworkBreadcrumbs) {
+        client.addBreadcrumb('HTTP request started', {
+          category: 'http',
+          level: 'info',
+          metadata: {
+            method: req.method,
+            endpoint: path || req.path,
+          },
+        });
+      }
 
       let responseBody: unknown;
       let capturedError: unknown;
@@ -75,14 +119,16 @@ export function replayStackExpressMiddleware(client: ReplayStack, options: Expre
 
         const errorDetails = getErrorDetails(capturedError);
 
-        client.addBreadcrumb('HTTP request finished', {
-          category: 'http',
-          level: status === 'failed' ? 'error' : status === 'warning' ? 'warning' : 'info',
-          metadata: {
-            statusCode,
-            executionTimeMs,
-          },
-        });
+        if (frameworkBreadcrumbs) {
+          client.addBreadcrumb('HTTP request finished', {
+            category: 'http',
+            level: status === 'failed' ? 'error' : status === 'warning' ? 'warning' : 'info',
+            metadata: {
+              statusCode,
+              executionTimeMs,
+            },
+          });
+        }
 
         void client.captureEvent({
           traceId,
@@ -123,20 +169,19 @@ export function replayStackExpressErrorMiddleware(client: ReplayStack) {
 
     res.locals.replayStackErrorCaptured = true;
 
-    client.addBreadcrumb('Unhandled exception captured', {
-      category: 'exception',
-      level: 'error',
-      metadata: {
-        errorName: details.errorName,
-        errorMessage: details.errorMessage,
-      },
+    const crumbs = client.getBreadcrumbs();
+    const endpoint = normalizeEndpoint(req.originalUrl || req.url) || req.path;
+
+    client.captureErrorLog(error, {
+      method: req.method,
+      endpoint,
     });
 
     void client.captureEvent({
       traceId,
       eventType: 'api',
       method: req.method,
-      endpoint: normalizeEndpoint(req.originalUrl || req.url) || req.path,
+      endpoint,
       requestUrl: buildAbsoluteRequestUrlFromParts({
         pathWithQuery: req.originalUrl || req.url || '',
         getHeader: (name) => req.get(name),
@@ -145,16 +190,15 @@ export function replayStackExpressErrorMiddleware(client: ReplayStack) {
       requestHeaders: headersToObject(req.headers),
       requestPayload: req.body,
       responseHeaders: headersToObject(res.getHeaders()),
-      responsePayload: {
-        message: details.errorMessage,
-      },
+      responsePayload: errorResponsePayload(error, details.errorMessage ?? 'Unknown error', crumbs),
       status: 'failed',
-      statusCode: res.statusCode >= 400 ? res.statusCode : 500,
+      statusCode: errorStatusCode(error, res),
       errorName: details.errorName,
       errorMessage: details.errorMessage,
       stackTrace: details.stackTrace,
       stackFrames: details.stackFrames,
-      breadcrumbs: client.getBreadcrumbs(),
+      breadcrumbs: crumbs,
+      logs: client.getLogs(),
       sourceIp: req.ip,
       userAgent: req.headers['user-agent'],
     });

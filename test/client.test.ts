@@ -12,6 +12,11 @@ function mockOkFetch(): Mock<typeof fetch> {
   return fn;
 }
 
+/** Most unit tests assert on success events; SDK default is errors-only since 1.0.6. */
+function testClient(config: ConstructorParameters<typeof ReplayStack>[0]): ReplayStack {
+  return new ReplayStack({ captureSuccess: true, retries: 0, ...config });
+}
+
 describe('ReplayStack', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
@@ -36,11 +41,10 @@ describe('ReplayStack', () => {
 
   it('strips trailing slash from endpoint when posting', async () => {
     const fetchImpl = mockOkFetch();
-    const client = new ReplayStack({
+    const client = testClient({
       apiKey: 'secret',
       endpoint: 'https://edge.test/',
       fetchImpl: fetchImpl,
-      retries: 0,
     });
 
     await client.captureEvent({
@@ -65,7 +69,11 @@ describe('ReplayStack', () => {
   it('uses REPLAYSTACK_ENDPOINT when endpoint not set on config', async () => {
     vi.stubEnv('REPLAYSTACK_ENDPOINT', 'https://from-env.example');
     const fetchImpl = mockOkFetch();
-    await createReplayStackClient({ apiKey: 'k', fetchImpl: fetchImpl as unknown as typeof fetch }).captureEvent({
+    await createReplayStackClient({
+      apiKey: 'k',
+      captureSuccess: true,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    }).captureEvent({
       eventType: 'custom',
       endpoint: '/x',
       status: 'success',
@@ -79,6 +87,7 @@ describe('ReplayStack', () => {
     const fetchImpl = mockOkFetch();
     await createReplayStackClient({
       apiKey: 'k',
+      captureSuccess: true,
       fetchImpl: fetchImpl,
     }).captureEvent({
       eventType: 'custom',
@@ -91,7 +100,7 @@ describe('ReplayStack', () => {
 
   it('annotates outgoing events with detected auth mode based on request headers', async () => {
     const fetchImpl = mockOkFetch();
-    const client = new ReplayStack({ apiKey: 'k', fetchImpl, retries: 0 });
+    const client = testClient({ apiKey: 'k', fetchImpl });
 
     await client.captureEvent({
       eventType: 'api',
@@ -112,7 +121,7 @@ describe('ReplayStack', () => {
 
   it('marks an event as `none` when no auth headers are present', async () => {
     const fetchImpl = mockOkFetch();
-    const client = new ReplayStack({ apiKey: 'k', fetchImpl, retries: 0 });
+    const client = testClient({ apiKey: 'k', fetchImpl });
 
     await client.captureEvent({
       eventType: 'api',
@@ -182,7 +191,7 @@ describe('ReplayStack', () => {
 
   it('skips paths on ignoredPaths', async () => {
     const fetchImpl = mockOkFetch();
-    const client = new ReplayStack({
+    const client = testClient({
       apiKey: 'k',
       ignoredPaths: ['/skip'],
       fetchImpl: fetchImpl,
@@ -200,7 +209,7 @@ describe('ReplayStack', () => {
 
   it('returns null when sample rate excludes event', async () => {
     const fetchImpl = mockOkFetch();
-    const client = new ReplayStack({
+    const client = testClient({
       apiKey: 'k',
       sampleRate: 0,
       fetchImpl: fetchImpl,
@@ -224,10 +233,9 @@ describe('ReplayStack', () => {
       json: async () => ({ message: 'bad key' }),
     } as unknown as globalThis.Response);
 
-    const client = new ReplayStack({
+    const client = testClient({
       apiKey: 'k',
       fetchImpl: fetchImpl,
-      retries: 0,
       onError,
     });
 
@@ -292,10 +300,9 @@ describe('ReplayStack', () => {
       } as unknown as globalThis.Response;
     });
 
-    const client = new ReplayStack({
+    const client = testClient({
       apiKey: 'k',
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      retries: 0,
       offlineQueueMax: 50,
     });
 
@@ -317,10 +324,9 @@ describe('ReplayStack', () => {
     const fetchImpl = vi.fn<typeof fetch>();
     fetchImpl.mockRejectedValue(new Error('down'));
 
-    const client = new ReplayStack({
+    const client = testClient({
       apiKey: 'k',
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      retries: 0,
       offlineQueueMax: 0,
     });
 
@@ -340,10 +346,9 @@ describe('ReplayStack', () => {
     const fetchImpl = vi.fn<typeof fetch>();
     fetchImpl.mockRejectedValue(new Error('down'));
 
-    const client = new ReplayStack({
+    const client = testClient({
       apiKey: 'k',
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      retries: 0,
       offlineQueueMax: 1,
       onQueueDrop,
     });
@@ -391,10 +396,9 @@ describe('ReplayStack', () => {
       } as unknown as globalThis.Response;
     });
 
-    const client = new ReplayStack({
+    const client = testClient({
       apiKey: 'k',
       fetchImpl: fetchImpl as unknown as typeof fetch,
-      retries: 0,
       flushIntervalMs: 5_000,
       offlineQueueMax: 10,
     });
@@ -414,9 +418,95 @@ describe('ReplayStack', () => {
     await client.close();
   });
 
+  it('masks breadcrumb metadata at add time', () => {
+    const client = testClient({ apiKey: 'k', fetchImpl: mockOkFetch() });
+    client.addBreadcrumb('step', { password: 'secret', ok: 'yes' });
+    const crumbs = client.getBreadcrumbs();
+    expect(crumbs[0]?.metadata).toEqual({ password: '[MASKED]', ok: 'yes' });
+  });
+
+  it('captureLog stores by default (captureLogs true)', () => {
+    const client = testClient({ apiKey: 'k', fetchImpl: mockOkFetch() });
+    client.captureLog({ level: 'error', message: 'stored' });
+    expect(client.getLogs()).toHaveLength(1);
+  });
+
+  it('captureLog is a no-op when captureLogs is false', () => {
+    const client = testClient({ apiKey: 'k', captureLogs: false, fetchImpl: mockOkFetch() });
+    client.captureLog({ level: 'error', message: 'ignored' });
+    expect(client.getLogs()).toHaveLength(0);
+  });
+
+  it('captureLog respects logLevel and masks metadata', async () => {
+    const fetchImpl = mockOkFetch();
+    const client = testClient({
+      apiKey: 'k',
+      captureLogs: true,
+      logLevel: 'error',
+      fetchImpl,
+    });
+
+    client.captureLog({ level: 'info', message: 'skipped' });
+    client.captureLog({ level: 'error', message: 'kept', metadata: { token: 'x' } });
+
+    expect(client.getLogs()).toHaveLength(1);
+    expect(client.getLogs()[0]?.metadata).toEqual({ token: '[MASKED]' });
+
+    await client.captureEvent({
+      eventType: 'custom',
+      endpoint: '/x',
+      status: 'failed',
+      statusCode: 500,
+    });
+
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    const payload = JSON.parse(init.body as string);
+    expect(payload.logs).toHaveLength(1);
+    expect(payload.logs[0].message).toBe('kept');
+  });
+
+  it('does not attach logs when captureLogs is false on captureEvent', async () => {
+    const fetchImpl = mockOkFetch();
+    const client = testClient({ apiKey: 'k', captureLogs: false, fetchImpl });
+    client.captureLog({ level: 'error', message: 'nope' });
+
+    await client.captureEvent({
+      eventType: 'custom',
+      endpoint: '/x',
+      status: 'failed',
+      statusCode: 500,
+    });
+
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    const payload = JSON.parse(init.body as string);
+    expect(payload.logs).toBeUndefined();
+  });
+
+  it('merges remoteMaskingRules.fields with defaults', async () => {
+    const fetchImpl = mockOkFetch();
+    const client = testClient({
+      apiKey: 'k',
+      remoteMaskingRules: { fields: ['internalId'] },
+      fetchImpl,
+    });
+
+    await client.captureEvent({
+      eventType: 'custom',
+      endpoint: '/x',
+      status: 'failed',
+      statusCode: 500,
+      requestPayload: { internalId: 'abc', ok: true },
+    });
+
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    const payload = JSON.parse(init.body as string);
+    expect(payload.requestPayload.internalId).toBe('[MASKED]');
+    expect(payload.requestPayload.ok).toBe(true);
+  });
+
   it('close disables new captures', async () => {
     const fetchImpl = mockOkFetch();
-    const client = new ReplayStack({ apiKey: 'k', fetchImpl, retries: 0 });
+    const client = testClient({ apiKey: 'k', fetchImpl });
     await client.close();
     await client.captureEvent({
       eventType: 'custom',

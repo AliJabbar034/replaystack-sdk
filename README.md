@@ -6,22 +6,77 @@ It is designed for backend debugging, event replay, exception inspection, and re
 
 ---
 
-## What This SDK Captures
+## What ReplayStack Captures
 
-The SDK can automatically capture:
+ReplayStack is **production-safe** and **developer-friendly**. It does **not** automatically capture every internal code line or execution step in full detail — no line-by-line debugger, profiler, or automatic function instrumentation.
 
-- API request method and endpoint
-- Request headers and body
-- Response headers and body
-- Status code
-- Response time
-- Error name and message
-- Full stack trace
-- Parsed stack frames with file name, function name, line number, and column number
-- Request-scoped breadcrumbs
-- Service name, environment, app version, and commit hash
+ReplayStack captures the important debugging context automatically and allows developers to add meaningful breadcrumbs for business-level step tracking. It does not act as a production line-by-line debugger or profiler.
 
-Important: the SDK does not capture every executed source-code line automatically. That would require a heavy profiler/debugger and is not recommended for production. Instead, it captures line-level exception details from stack traces and supports breadcrumbs for step-by-step debugging context.
+### Level 1 — Automatic request/response (framework middleware)
+
+When you use Express, Next.js, or NestJS adapters, the SDK automatically captures:
+
+- `eventType`, HTTP method, endpoint/path, status, `statusCode`, `executionTimeMs`
+- Request and response headers (masked)
+- Request and response payloads (masked when enabled)
+- `serviceName`, `environment`, `appVersion`, `commitHash`, `sourceIp`, `userAgent`
+
+### Level 2 — Automatic exception detail
+
+On failures, the SDK captures:
+
+- `errorName`, `errorMessage`, `stackTrace`
+- `stackFrames[]` with `functionName`, `fileName`, `lineNumber`, `columnNumber` (when available), and `raw`
+
+This pinpoints **where** the error happened — not every line that ran before it.
+
+### Level 3 — Developer-defined breadcrumbs
+
+Add meaningful business steps manually (nothing is auto-generated per source line):
+
+```ts
+replayStack.addBreadcrumb('Order API started');
+replayStack.addBreadcrumb('Validated request payload');
+replayStack.addBreadcrumb('Checking inventory', { orderId: 'ord_123' });
+```
+
+Breadcrumb `metadata` is masked before storage. Framework HTTP lifecycle breadcrumbs are **off by default**; set `automaticFrameworkBreadcrumbs: true` on middleware options if you want them.
+
+### Level 4 — Optional logs (disabled by default)
+
+```ts
+const replayStack = createReplayStackClient({
+  apiKey: '...',
+  captureLogs: true, // default; set false to disable
+  logLevel: 'error', // default; can also be set via dashboard remote SDK config
+});
+
+replayStack.captureLog({
+  level: 'error',
+  message: 'Payment provider timeout',
+  metadata: { provider: 'stripe' },
+});
+```
+
+- `captureLogs` defaults to `true` (set `captureLogs: false` or `REPLAYSTACK_CAPTURE_LOGS=false` to disable)
+- `logLevel` defaults to `error` (only `error` and above are kept unless you lower the threshold)
+- Express/Nest **error middleware** auto-records the exception message as an error log when `captureLogs` is enabled
+- Does **not** intercept `console`, Winston, Pino, or other loggers — use `captureLog()` for extra lines or add logger adapters later
+
+### Masking
+
+All request/response payloads and headers, breadcrumb metadata, and log metadata pass through shared recursive, case-insensitive masking before ingest. Fields are merged from:
+
+1. SDK defaults (`authorization`, `password`, `token`, `accessToken`, `refreshToken`, `apiKey`, `secret`, `cookie`, `session`, `cardNumber`, `otp`, …)
+2. `config.maskFields`
+3. `config.remoteMaskingRules.fields` (e.g. from dashboard)
+
+### What ReplayStack does **not** capture
+
+- Every executed line of code
+- Every function call
+- Local variables
+- Full internal execution flow
 
 ---
 
@@ -251,6 +306,28 @@ replayStack.clearBreadcrumbs();
 
 ---
 
+## Optional logs
+
+Logs are **disabled by default**. Enable explicitly when you need them in failed events:
+
+```ts
+const replayStack = createReplayStackClient({
+  apiKey: '...',
+  captureLogs: true,
+  logLevel: 'error', // or lower via SDK config / dashboard remote settings
+});
+
+replayStack.captureLog({
+  level: 'error',
+  message: 'Inventory service unavailable',
+  metadata: { sku: 'SKU-42' },
+});
+```
+
+Log `metadata` is masked. The SDK does not hook `console` or third-party loggers — call `captureLog()` from your code or a future logger adapter.
+
+---
+
 ## Manual Exception Capture
 
 Use this for queues, cron jobs, webhooks, background workers, or custom logic.
@@ -366,12 +443,16 @@ createReplayStackClient({
 | `timeoutMs`           | Request timeout for ingestion                                                                                               | `2500`                       |
 | `retries`             | Retry count if ingestion fails                                                                                              | `1`                          |
 | `sampleRate`          | Capture percentage from `0` to `1`                                                                                          | `1`                          |
-| `captureSuccess`      | Capture successful events                                                                                                   | `true`                       |
+| `captureSuccess`      | Capture successful events                                                                                                   | `false`                      |
+| `captureLogs`         | Attach `captureLog()` entries to events                                                                                     | `true`                       |
+| `logLevel`            | Minimum log level when `captureLogs` is true (`debug` \| `info` \| `warning` \| `error`)                                    | `error`                      |
 | `maxPayloadSizeBytes` | Payload truncation size                                                                                                     | `524288`                     |
 | `maxBreadcrumbs`      | Number of breadcrumbs kept per request/client                                                                               | `50`                         |
-| `maskFields`          | Custom fields to mask                                                                                                       | `[]`                         |
+| `maxLogs`             | Number of logs kept per request/client when `captureLogs` is true                                                           | `50`                         |
+| `maskFields`          | Custom fields to mask (merged with SDK defaults)                                                                            | `[]`                         |
+| `remoteMaskingRules`  | Dashboard-provided rules, e.g. `{ fields: ['internalId'] }`                                                                 | `undefined`                  |
 | `ignoredPaths`        | Paths to ignore                                                                                                             | `[]`                         |
-| `offlineQueueMax`     | Max prepared events held in memory after ingest still fails after retries; oldest dropped when full. `0` disables the queue | `100`                        |
+| `offlineQueueMax`     | Max prepared events held in memory after ingest still fails after retries; oldest dropped when full. `0` disables the queue | `0`                          |
 | `flushIntervalMs`     | If greater than `0`, periodically calls `flush()` to drain the offline queue                                                | `0` (disabled)               |
 | `onQueueDrop`         | Callback when the queue drops the oldest event because `offlineQueueMax` was exceeded                                       | none                         |
 

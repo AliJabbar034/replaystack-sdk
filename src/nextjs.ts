@@ -18,6 +18,8 @@ export interface NextRouteHandlerOptions {
   captureHeaders?: boolean;
   getTraceId?: (request: Request) => string | undefined;
   shouldCapture?: (data: { method: string; endpoint?: string; statusCode: number; executionTimeMs: number }) => boolean;
+  /** Default false — use `client.addBreadcrumb()` for business steps. */
+  automaticFrameworkBreadcrumbs?: boolean;
 }
 
 export type NextRouteHandler<TRequest extends Request = Request> = (
@@ -41,6 +43,7 @@ export function withReplayStackNext<TRequest extends Request = Request>(
   const captureRequestBody = options.captureRequestBody ?? true;
   const captureResponseBody = options.captureResponseBody ?? true;
   const captureHeaders = options.captureHeaders ?? true;
+  const frameworkBreadcrumbs = options.automaticFrameworkBreadcrumbs ?? false;
 
   return async function replayStackNextHandler(request: TRequest, context?: unknown): Promise<Response> {
     return runWithReplayStackContext(async () => {
@@ -54,11 +57,13 @@ export function withReplayStackNext<TRequest extends Request = Request>(
       let responsePayload: unknown;
 
       try {
-        options.client.addBreadcrumb('Next.js route handler started', {
-          category: 'http',
-          level: 'info',
-          metadata: { method, endpoint },
-        });
+        if (frameworkBreadcrumbs) {
+          options.client.addBreadcrumb('Next.js route handler started', {
+            category: 'http',
+            level: 'info',
+            metadata: { method, endpoint },
+          });
+        }
 
         const requestForHandler = request.clone() as TRequest;
 
@@ -78,11 +83,13 @@ export function withReplayStackNext<TRequest extends Request = Request>(
         const shouldCapture = options.shouldCapture?.({ method, endpoint, statusCode, executionTimeMs }) ?? true;
 
         if (shouldCapture) {
-          options.client.addBreadcrumb('Next.js route handler finished', {
-            category: 'http',
-            level: status === 'failed' ? 'error' : status === 'warning' ? 'warning' : 'info',
-            metadata: { statusCode, executionTimeMs },
-          });
+          if (frameworkBreadcrumbs) {
+            options.client.addBreadcrumb('Next.js route handler finished', {
+              category: 'http',
+              level: status === 'failed' ? 'error' : status === 'warning' ? 'warning' : 'info',
+              metadata: { statusCode, executionTimeMs },
+            });
+          }
 
           void options.client.captureEvent({
             traceId,
@@ -112,15 +119,6 @@ export function withReplayStackNext<TRequest extends Request = Request>(
       } catch (error) {
         const details = getErrorDetails(error);
         const executionTimeMs = Date.now() - startedAt;
-
-        options.client.addBreadcrumb('Next.js route handler exception captured', {
-          category: 'exception',
-          level: 'error',
-          metadata: {
-            errorName: details.errorName,
-            errorMessage: details.errorMessage,
-          },
-        });
 
         void options.client.captureEvent({
           traceId,
@@ -154,6 +152,8 @@ export interface NextApiWrapperOptions {
   captureResponseBody?: boolean;
   captureHeaders?: boolean;
   getTraceId?: (req: any) => string | undefined;
+  /** Default false — use `client.addBreadcrumb()` for business steps. */
+  automaticFrameworkBreadcrumbs?: boolean;
 }
 
 /**
@@ -169,6 +169,7 @@ export function withReplayStackNextApi<TReq extends any = any, TRes extends any 
   const captureRequestBody = options.captureRequestBody ?? true;
   const captureResponseBody = options.captureResponseBody ?? true;
   const captureHeaders = options.captureHeaders ?? true;
+  const frameworkBreadcrumbs = options.automaticFrameworkBreadcrumbs ?? false;
 
   return async function replayStackNextApiHandler(req: TReq, res: TRes): Promise<unknown> {
     return runWithReplayStackContext(async () => {
@@ -196,22 +197,26 @@ export function withReplayStackNextApi<TReq extends any = any, TRes extends any 
           anyRes.setHeader('x-trace-id', traceId);
         }
 
-        options.client.addBreadcrumb('Next.js API route started', {
-          category: 'http',
-          level: 'info',
-          metadata: { method: anyReq.method, endpoint },
-        });
+        if (frameworkBreadcrumbs) {
+          options.client.addBreadcrumb('Next.js API route started', {
+            category: 'http',
+            level: 'info',
+            metadata: { method: anyReq.method, endpoint },
+          });
+        }
 
         const result = await handler(req, res);
         const statusCode = anyRes.statusCode || 200;
         const executionTimeMs = Date.now() - startedAt;
         const status = getStatusFromCode(statusCode);
 
-        options.client.addBreadcrumb('Next.js API route finished', {
-          category: 'http',
-          level: status === 'failed' ? 'error' : status === 'warning' ? 'warning' : 'info',
-          metadata: { statusCode, executionTimeMs },
-        });
+        if (frameworkBreadcrumbs) {
+          options.client.addBreadcrumb('Next.js API route finished', {
+            category: 'http',
+            level: status === 'failed' ? 'error' : status === 'warning' ? 'warning' : 'info',
+            metadata: { statusCode, executionTimeMs },
+          });
+        }
 
         void options.client.captureEvent({
           traceId,
@@ -234,12 +239,6 @@ export function withReplayStackNextApi<TReq extends any = any, TRes extends any 
       } catch (error) {
         const details = getErrorDetails(error);
         const executionTimeMs = Date.now() - startedAt;
-
-        options.client.addBreadcrumb('Next.js API route exception captured', {
-          category: 'exception',
-          level: 'error',
-          metadata: { errorName: details.errorName, errorMessage: details.errorMessage },
-        });
 
         void options.client.captureEvent({
           traceId,

@@ -3,7 +3,7 @@ import type { NextFunction, Request as ExpressRequest, Response as ExpressRespon
 import type { Mock } from 'vitest';
 import { describe, expect, it, vi } from 'vitest';
 import { ReplayStack } from '../src/client';
-import { replayStackExpressErrorMiddleware, replayStackExpressMiddleware } from '../src/express';
+import { captureFailure, replayStackExpressErrorMiddleware, replayStackExpressMiddleware } from '../src/express';
 
 function mockFetch(): Mock<typeof fetch> {
   const fn = vi.fn<typeof fetch>();
@@ -59,6 +59,7 @@ describe('replayStackExpressMiddleware', () => {
     const fetchImpl = mockFetch();
     const client = new ReplayStack({
       apiKey: 'k',
+      captureSuccess: true,
       fetchImpl: fetchImpl,
     });
     const mw = replayStackExpressMiddleware(client);
@@ -75,6 +76,7 @@ describe('replayStackExpressMiddleware', () => {
     const fetchImpl = mockFetch();
     const client = new ReplayStack({
       apiKey: 'k',
+      captureSuccess: true,
       fetchImpl: fetchImpl,
     });
     const mw = replayStackExpressMiddleware(client);
@@ -107,6 +109,7 @@ describe('replayStackExpressMiddleware', () => {
     const fetchImpl = mockFetch();
     const client = new ReplayStack({
       apiKey: 'k',
+      captureSuccess: true,
       fetchImpl: fetchImpl,
     });
     const mw = replayStackExpressMiddleware(client, {
@@ -148,5 +151,81 @@ describe('replayStackExpressErrorMiddleware', () => {
     const init = fetchImpl.mock.calls[0][1] as RequestInit;
     const payload = JSON.parse(init.body as string);
     expect(payload.status).toBe('failed');
+    expect(payload.logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: 'error',
+          message: 'handler blew up',
+        }),
+      ]),
+    );
+  });
+
+  it('uses error.replayStack.responsePayload when present', async () => {
+    const fetchImpl = mockFetch();
+    const client = new ReplayStack({
+      apiKey: 'k',
+      fetchImpl: fetchImpl,
+      retries: 0,
+    });
+    const errMw = replayStackExpressErrorMiddleware(client);
+    const req = mockRequest({
+      method: 'POST',
+      originalUrl: '/workflow/provision',
+      path: '/workflow/provision',
+      body: { orderId: 'ord_1', failAtStep: 3 },
+    });
+    const res = mockResponse();
+    const next = vi.fn() as NextFunction;
+
+    const err = new Error('step 3 failed') as Error & {
+      replayStack: {
+        responsePayload: { steps: [{ name: 'charge_payment'; status: 'failed' }] };
+        statusCode?: number;
+      };
+    };
+    err.replayStack = {
+      responsePayload: { steps: [{ name: 'charge_payment', status: 'failed' }] },
+      statusCode: 500,
+    };
+
+    errMw(err, req, res, next);
+
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalled());
+    const init = fetchImpl.mock.calls[0][1] as RequestInit;
+    const payload = JSON.parse(init.body as string);
+    expect(payload.requestPayload).toEqual({ orderId: 'ord_1', failAtStep: 3 });
+    expect(payload.responsePayload).toEqual({
+      steps: [{ name: 'charge_payment', status: 'failed' }],
+    });
+    expect(payload.statusCode).toBe(500);
+  });
+
+  it('includes breadcrumbs in responsePayload for plain thrown errors', async () => {
+    const fetchImpl = mockFetch();
+    const client = new ReplayStack({ apiKey: 'k', captureSuccess: true, fetchImpl: fetchImpl, retries: 0 });
+    client.addBreadcrumb('step one', { category: 'workflow', level: 'info' });
+    const errMw = replayStackExpressErrorMiddleware(client);
+    const req = mockRequest({ method: 'POST', body: { orderId: 'x' } });
+    const res = mockResponse();
+    const next = vi.fn() as NextFunction;
+
+    errMw(new Error('failed'), req, res, next);
+
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalled());
+    const payload = JSON.parse((fetchImpl.mock.calls[0][1] as RequestInit).body as string);
+    expect(payload.responsePayload.message).toBe('failed');
+    expect(payload.responsePayload.breadcrumbs.length).toBeGreaterThanOrEqual(1);
+    expect(payload.requestPayload).toEqual({ orderId: 'x' });
+  });
+});
+
+describe('captureFailure', () => {
+  it('attaches response payload for error middleware', () => {
+    const err = captureFailure('workflow stopped', { steps: [{ name: 'pay', status: 'failed' }] });
+    expect(err.message).toBe('workflow stopped');
+    expect((err as Error & { replayStack: { responsePayload: unknown } }).replayStack.responsePayload).toEqual({
+      steps: [{ name: 'pay', status: 'failed' }],
+    });
   });
 });

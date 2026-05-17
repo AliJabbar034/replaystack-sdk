@@ -1,28 +1,30 @@
 import { randomUUID } from 'crypto';
+import { maskSensitiveData as maskValue, resolveMaskFields } from './masking';
 import { parseStackTrace } from './stacktrace';
-import type { ReplayStackStackFrame } from './types';
+import type { ReplayStackBreadcrumb, ReplayStackStackFrame } from './types';
 
-const DEFAULT_MASK_FIELDS = [
-  'authorization',
-  'password',
-  'passwd',
-  'token',
-  'access_token',
-  'refresh_token',
-  'apiKey',
-  'api_key',
-  'secret',
-  'client_secret',
-  'cookie',
-  'set-cookie',
-  'cardNumber',
-  'card_number',
-  'cvv',
-  'otp',
-];
+export { DEFAULT_MASK_FIELDS, resolveMaskFields } from './masking';
+export type { MaskFieldConfig, ReplayStackRemoteMaskingRules } from './masking';
 
 export function createTraceId(): string {
   return randomUUID();
+}
+
+/** Backend ingest requires `metadata` to be a plain object when present — strip invalid values. */
+export function normalizeBreadcrumbs(breadcrumbs?: ReplayStackBreadcrumb[]): ReplayStackBreadcrumb[] {
+  if (!breadcrumbs?.length) return [];
+  return breadcrumbs.map((b) => {
+    const out: ReplayStackBreadcrumb = {
+      message: b.message,
+      timestamp: b.timestamp ?? new Date().toISOString(),
+    };
+    if (b.category != null) out.category = b.category;
+    if (b.level != null) out.level = b.level;
+    if (b.metadata != null && typeof b.metadata === 'object' && !Array.isArray(b.metadata)) {
+      out.metadata = b.metadata as Record<string, unknown>;
+    }
+    return out;
+  });
 }
 
 export function normalizeEndpoint(endpoint?: string): string | undefined {
@@ -195,33 +197,7 @@ export function shouldSample(sampleRate = 1): boolean {
 }
 
 export function maskSensitiveData<T>(value: T, customFields: string[] = []): T {
-  const fields = new Set([...DEFAULT_MASK_FIELDS, ...customFields].map((f) => f.toLowerCase()));
-  return deepMask(value, fields, new WeakSet()) as T;
-}
-
-function deepMask(value: unknown, fields: Set<string>, seen: WeakSet<object>): unknown {
-  if (value === null || value === undefined) return value;
-
-  if (typeof value !== 'object') return value;
-
-  if (seen.has(value as object)) return '[Circular]';
-  seen.add(value as object);
-
-  if (Array.isArray(value)) {
-    return value.map((item) => deepMask(item, fields, seen));
-  }
-
-  const output: Record<string, unknown> = {};
-
-  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-    if (fields.has(key.toLowerCase())) {
-      output[key] = '[MASKED]';
-    } else {
-      output[key] = deepMask(val, fields, seen);
-    }
-  }
-
-  return output;
+  return maskValue(value, resolveMaskFields({ maskFields: customFields }));
 }
 
 export function safeJsonClone(value: unknown): unknown {

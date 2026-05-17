@@ -1,8 +1,15 @@
 export { ReplayStack, ReplayStack as ReplayStackClient, createReplayStackClient } from './client';
 export { installReplayStackProcessGuards } from './runtime';
-export { replayStackExpressMiddleware, replayStackExpressErrorMiddleware } from './express';
-export { createTraceId, detectAuthMode } from './utils';
-export { parseStackTrace } from './stacktrace';
+export {
+  replayStackExpressMiddleware,
+  replayStackExpressErrorMiddleware,
+  captureFailure,
+  getReplayStackErrorCapture,
+  type ReplayStackErrorCapture,
+} from './express';
+export { createTraceId, detectAuthMode, maskSensitiveData, resolveMaskFields, DEFAULT_MASK_FIELDS } from './utils';
+export type { MaskFieldConfig, ReplayStackRemoteMaskingRules } from './masking';
+export { formatStackFrameLocation, parseStackTrace, pickPrimaryStackFrame } from './stacktrace';
 export type {
   ExpressMiddlewareOptions,
   InstallReplayStackProcessGuardsOptions,

@@ -45,3 +45,20 @@ function parseStackLine(line: string): ReplayStackStackFrame | null {
 
   return { raw: trimmed };
 }
+
+/** Prefer the first app frame (skip node_modules); fallback to first frame. */
+export function pickPrimaryStackFrame(frames?: ReplayStackStackFrame[]): ReplayStackStackFrame | undefined {
+  if (!frames?.length) return undefined;
+  const app = frames.find((f) => f.fileName && !f.fileName.includes('node_modules') && !f.fileName.startsWith('node:'));
+  return app ?? frames[0];
+}
+
+export function formatStackFrameLocation(frame: ReplayStackStackFrame): string | undefined {
+  if (!frame.fileName || frame.lineNumber == null) return undefined;
+  const file = frame.fileName.replace(/\\/g, '/');
+  const parts = file.split('/');
+  const short = parts.length > 3 ? parts.slice(-3).join('/') : file;
+  const fn = frame.functionName ? `${frame.functionName} ` : '';
+  const col = frame.columnNumber != null ? `:${frame.columnNumber}` : '';
+  return `${fn}@ ${short}:${frame.lineNumber}${col}`;
+}

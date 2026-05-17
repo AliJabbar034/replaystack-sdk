@@ -50,7 +50,10 @@ describe('createReplayStackNestInterceptor', () => {
       getBreadcrumbs: vi.fn(() => []),
     } as unknown as ReplayStack;
 
-    const InterceptorClass = createReplayStackNestInterceptor({ client });
+    const InterceptorClass = createReplayStackNestInterceptor({
+      client,
+      automaticFrameworkBreadcrumbs: true,
+    });
     const interceptor = new InterceptorClass();
 
     const req = {

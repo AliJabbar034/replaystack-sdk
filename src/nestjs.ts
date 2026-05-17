@@ -19,6 +19,8 @@ export interface ReplayStackNestOptions {
   captureHeaders?: boolean;
   getTraceId?: (req: any) => string | undefined;
   shouldCapture?: (data: { method: string; endpoint?: string; statusCode: number; executionTimeMs: number }) => boolean;
+  /** Default false — use `client.addBreadcrumb()` for business steps. */
+  automaticFrameworkBreadcrumbs?: boolean;
 }
 
 /**
@@ -31,6 +33,7 @@ export function createReplayStackNestInterceptor(options: ReplayStackNestOptions
   const captureRequestBody = options.captureRequestBody ?? true;
   const captureResponseBody = options.captureResponseBody ?? true;
   const captureHeaders = options.captureHeaders ?? true;
+  const frameworkBreadcrumbs = options.automaticFrameworkBreadcrumbs ?? false;
 
   @Injectable()
   class ReplayStackNestInterceptor implements NestInterceptor {
@@ -47,11 +50,13 @@ export function createReplayStackNestInterceptor(options: ReplayStackNestOptions
       });
       const traceId = options.getTraceId?.(req) || req.headers?.['x-trace-id'];
 
-      options.client.addBreadcrumb('NestJS request started', {
-        category: 'http',
-        level: 'info',
-        metadata: { method: req.method, endpoint },
-      });
+      if (frameworkBreadcrumbs) {
+        options.client.addBreadcrumb('NestJS request started', {
+          category: 'http',
+          level: 'info',
+          metadata: { method: req.method, endpoint },
+        });
+      }
 
       return next.handle().pipe(
         tap((responseBody) => {
@@ -69,11 +74,13 @@ export function createReplayStackNestInterceptor(options: ReplayStackNestOptions
 
           if (!shouldCapture) return;
 
-          options.client.addBreadcrumb('NestJS request finished', {
-            category: 'http',
-            level: status === 'failed' ? 'error' : status === 'warning' ? 'warning' : 'info',
-            metadata: { statusCode, executionTimeMs },
-          });
+          if (frameworkBreadcrumbs) {
+            options.client.addBreadcrumb('NestJS request finished', {
+              category: 'http',
+              level: status === 'failed' ? 'error' : status === 'warning' ? 'warning' : 'info',
+              metadata: { statusCode, executionTimeMs },
+            });
+          }
 
           void options.client.captureEvent({
             traceId,
@@ -127,10 +134,9 @@ export function createReplayStackNestExceptionFilter(options: ReplayStackNestOpt
         });
         const traceId = options.getTraceId?.(req) || req.headers?.['x-trace-id'];
 
-        options.client.addBreadcrumb('NestJS exception captured', {
-          category: 'exception',
-          level: 'error',
-          metadata: { errorName: details.errorName, errorMessage: details.errorMessage },
+        options.client.captureErrorLog(exception, {
+          method: req.method,
+          endpoint,
         });
 
         await options.client.captureEvent({
@@ -150,6 +156,7 @@ export function createReplayStackNestExceptionFilter(options: ReplayStackNestOpt
           stackTrace: details.stackTrace,
           stackFrames: details.stackFrames,
           breadcrumbs: options.client.getBreadcrumbs(),
+          logs: options.client.getLogs(),
           sourceIp: req.ip,
           userAgent: req.headers?.['user-agent'],
         });

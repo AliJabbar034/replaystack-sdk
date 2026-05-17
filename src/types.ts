@@ -74,8 +74,29 @@ export interface ReplayStackConfig {
   /** Maximum payload size in bytes before SDK truncates it. */
   maxPayloadSizeBytes?: number;
 
-  /** Field names to mask inside payloads and headers. */
+  /** Field names to mask inside payloads, headers, breadcrumb metadata, and log metadata. */
   maskFields?: string[];
+
+  /**
+   * Dashboard-provided masking rules (e.g. from remote SDK config).
+   * `remoteMaskingRules.fields` is merged with SDK defaults and `maskFields`.
+   */
+  remoteMaskingRules?: { fields?: string[] };
+
+  /**
+   * Attach `captureLog()` lines to captured events. Default `true`.
+   * Set to `false` or `REPLAYSTACK_CAPTURE_LOGS=false` to disable.
+   */
+  captureLogs?: boolean;
+
+  /**
+   * Minimum log level to retain when `captureLogs` is true. Default `error`.
+   * Can also be set via dashboard remote SDK config.
+   */
+  logLevel?: ReplayStackLogLevel;
+
+  /** Maximum logs kept in memory per request/client. Default `50`. */
+  maxLogs?: number;
 
   /** URL paths that should never be captured. */
   ignoredPaths?: string[];
@@ -101,6 +122,15 @@ export interface ReplayStackConfig {
    */
   flushIntervalMs?: number;
 
+  /**
+   * When &gt; 0, buffers prepared events and POSTs to `/ingest/bulk-events` on an interval or when the batch is full.
+   * Reduces HTTP overhead (Datadog-style batching). Default off (`0`).
+   */
+  batchFlushIntervalMs?: number;
+
+  /** Max events per bulk ingest request (backend cap: 100). Default `20`. */
+  batchMaxEvents?: number;
+
   /** Called when the offline queue drops the oldest event because `offlineQueueMax` was exceeded. */
   onQueueDrop?: (info: { reason: 'max_queue_size' }) => void;
 }
@@ -109,6 +139,8 @@ export interface ReplayStackLog {
   level: ReplayStackLogLevel;
   message: string;
   metadata?: Record<string, unknown>;
+  /** ISO-8601 timestamp; assigned by the SDK when omitted. */
+  timestamp?: string;
 }
 
 export interface ReplayStackEventInput {
@@ -173,14 +205,30 @@ export interface ExpressMiddlewareOptions {
 
   /** Decide whether request should be captured. */
   shouldCapture?: (data: { method: string; path: string; statusCode: number; executionTimeMs: number }) => boolean;
+
+  /**
+   * When true, framework middleware may add HTTP lifecycle breadcrumbs.
+   * Default `false` — use `addBreadcrumb()` for meaningful business steps.
+   */
+  automaticFrameworkBreadcrumbs?: boolean;
 }
 
 export interface ReplayStackClientInterface {
   captureEvent(event: ReplayStackEventInput): Promise<ReplayStackCaptureResponse | null>;
   captureException(error: unknown, context?: ReplayStackExceptionContext): Promise<ReplayStackCaptureResponse | null>;
-  addBreadcrumb(message: string, data?: Omit<ReplayStackBreadcrumb, 'message' | 'timestamp'>): void;
+  /**
+   * Record a developer-defined business step. Pass optional `metadata` (masked before storage).
+   * Legacy shape `{ category, level, metadata }` is also supported as the second argument.
+   */
+  addBreadcrumb(message: string, metadataOrOptions?: Record<string, unknown>): void;
+  /** Optional application log (no console/Winston interception). Requires `captureLogs: true`. */
+  captureLog(log: ReplayStackLog): void;
+  /** Records exception message as an error log when `captureLogs` is enabled. */
+  captureErrorLog(error: unknown, metadata?: Record<string, unknown>): void;
   clearBreadcrumbs(): void;
   getBreadcrumbs(): ReplayStackBreadcrumb[];
+  clearLogs(): void;
+  getLogs(): ReplayStackLog[];
   flush(): Promise<void>;
   /** Stops periodic flush, then drains the offline queue. After this, capture calls are no-ops. */
   close(): Promise<void>;
